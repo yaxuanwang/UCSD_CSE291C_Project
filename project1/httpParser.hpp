@@ -31,6 +31,7 @@ typedef struct http_response {
 class httpParser {
 public:
 	static httpRequest parse(string http_str);
+	static string create_response(httpResponse responseMsg);
 };
 
 

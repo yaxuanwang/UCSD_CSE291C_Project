@@ -1,5 +1,5 @@
 #include <sys/socket.h>    /* for socket(), bind(), and connect() */
-#include <sys/sendfile.h>
+// #include <sys/sendfile.h>
 #include <netinet/in.h>    /* for sockaddr_in and inet_ntoa() */
 #include <string.h>        /* for memset() */
 #include <arpa/inet.h>     /* for sockaddr_in and inet_ntoa() */
@@ -107,7 +107,7 @@ void handle_connection (int clientSocket, string doc_root) {
     		// cout << "Timeout" <<endl;
     		// responseMsg.status = "400";
     		// responseMsg.text = "";
-    		// string retMsg = create_response(responseMsg);
+    		// string retMsg = httpParser::create_response(responseMsg);
     		// const char *res = retMsg.c_str();
     		// send(clntSocket, res, retMsg.size(), 0);
     		break;
@@ -125,7 +125,7 @@ void handle_connection (int clientSocket, string doc_root) {
     		// }
 
     		responseMsg = process_request(requestMsg, doc_root);
-    		string retMsg = create_response(responseMsg);
+    		string retMsg = httpParser::create_response(responseMsg);
     		// string resStr = ansStr + retMsg;
     		
   
@@ -140,7 +140,7 @@ void handle_connection (int clientSocket, string doc_root) {
     			std::stringstream sstream(responseMsg.key_values["Content-Length"]);
 				size_t len;
 				sstream >> len;
-    			sendfile(clntSocket, fd, 0, len);
+    			// sendfile(clntSocket, fd, 0, len);
     			close(fd);
     		}
     	}
@@ -214,19 +214,19 @@ httpResponse process_request(httpRequest requestMsg, string doc_root) {
 }
 
 
-string create_response(httpResponse responseMsg) {
-	string ret;
-	ret = responseMsg.http_version + " " + responseMsg.status + " " + responseMsg.text + "\r\n";
-	ret = ret + "Server: " + responseMsg.key_values["Server"] + "\r\n";
-	if (responseMsg.status == "200")
-		ret = ret + "Last-Modified: " + responseMsg.key_values["Last-Modified"] + "\r\n";
-	ret = ret + "Content-Type: " + responseMsg.key_values["Content-Type"] + "\r\n";
-	ret = ret + "Content-Length: " + responseMsg.key_values["Content-Length"] + "\r\n";
-	ret += "\r\n";
-	if (responseMsg.body != "") {
-		ret += responseMsg.body;
-		ret += "\r\n";
-	}
-	return ret;
-}
+// string create_response(httpResponse responseMsg) {
+// 	string ret;
+// 	ret = responseMsg.http_version + " " + responseMsg.status + " " + responseMsg.text + "\r\n";
+// 	ret = ret + "Server: " + responseMsg.key_values["Server"] + "\r\n";
+// 	if (responseMsg.status == "200")
+// 		ret = ret + "Last-Modified: " + responseMsg.key_values["Last-Modified"] + "\r\n";
+// 	ret = ret + "Content-Type: " + responseMsg.key_values["Content-Type"] + "\r\n";
+// 	ret = ret + "Content-Length: " + responseMsg.key_values["Content-Length"] + "\r\n";
+// 	ret += "\r\n";
+// 	if (responseMsg.body != "") {
+// 		ret += responseMsg.body;
+// 		ret += "\r\n";
+// 	}
+// 	return ret;
+// }
 

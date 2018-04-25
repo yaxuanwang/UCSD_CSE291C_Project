@@ -59,9 +59,14 @@ http_request httpParser::parse(std::string http_str)
 
 	// parse key_value pairs
 	string key, value;
-	for (auto pair: pairs) {
+	for (string pair: pairs) {
 		pair.erase(std::remove(pair.begin(), pair.end(), ' '), pair.end());
 		std::stringstream item(pair);
+		// missing colon is invalid
+		if (pair.find(":") == std::string::npos) {
+    		ret.valid = false;
+    		break;
+		}
 		getline(item, key, ':');
 		getline(item, value);
 		// cout << "key is: " + key << endl;
@@ -80,3 +85,19 @@ http_request httpParser::parse(std::string http_str)
 	return ret;
 }
 
+
+string httpParser::create_response(httpResponse responseMsg) {
+	string ret;
+	ret = responseMsg.http_version + " " + responseMsg.status + " " + responseMsg.text + "\r\n";
+	ret = ret + "Server: " + responseMsg.key_values["Server"] + "\r\n";
+	if (responseMsg.status == "200")
+		ret = ret + "Last-Modified: " + responseMsg.key_values["Last-Modified"] + "\r\n";
+	ret = ret + "Content-Type: " + responseMsg.key_values["Content-Type"] + "\r\n";
+	ret = ret + "Content-Length: " + responseMsg.key_values["Content-Length"] + "\r\n";
+	ret += "\r\n";
+	if (responseMsg.body != "") {
+		ret += responseMsg.body;
+		ret += "\r\n";
+	}
+	return ret;
+}
