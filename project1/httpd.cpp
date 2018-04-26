@@ -63,7 +63,7 @@ void start_httpd(unsigned short port, string doc_root)
         
      	// concurrent connect with timeout
     	struct timeval timeout;      
-		timeout.tv_sec = 2;
+		timeout.tv_sec = 5;
 		timeout.tv_usec = 0;
 
 		if (setsockopt (clnt_sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout,
@@ -94,7 +94,8 @@ void handle_connection (int clientSocket, string doc_root) {
 	// int clntSocket = *(int*)clientSocket;
 	// string doc_root = *(string *) root;
     int clntSocket = clientSocket;
-    char readBuffer[2048];        
+    const int BUFSIZE = 1024;
+    char readBuffer[BUFSIZE+1];        
     int recvMsgSize;            
     httpFramer framer;
     httpRequest requestMsg;
@@ -103,13 +104,28 @@ void handle_connection (int clientSocket, string doc_root) {
     // Receive message from client
     while (1) {
     	// cout << "Handling client1" << endl;
-    	if ((recvMsgSize = recv(clntSocket, readBuffer, 1024, 0)) <= 0) {
-    		// cout << "Timeout" <<endl;
-    		// responseMsg.status = "400";
-    		// responseMsg.text = "";
-    		// string retMsg = httpParser::create_response(responseMsg);
-    		// const char *res = retMsg.c_str();
-    		// send(clntSocket, res, retMsg.size(), 0);
+    	recvMsgSize = recv(clntSocket, readBuffer, BUFSIZE, 0);
+    	if (recvMsgSize < 0 && errno == EWOULDBLOCK) {
+    		cout << "Timeout" <<endl;
+    		responseMsg.http_version = "HTTP/1.1";
+    		responseMsg.status = "400";
+    		responseMsg.text = "Client Error";
+    		responseMsg.key_values["Server"] = "localhost";
+    		responseMsg.body = "<html><body><h1>400 Client Error</h1></body></html>";
+			responseMsg.key_values["Content-Type"] = "text/html";
+			responseMsg.key_values["Content-Length"] = to_string(responseMsg.body.size());
+    		string retMsg = httpParser::create_response(responseMsg);
+    		const char *res = retMsg.c_str();
+    		send(clntSocket, res, retMsg.size(), 0);
+    		break; 	
+    	}
+
+    	if (recvMsgSize < 0) {
+    		cerr << "Failed to receive" << endl;
+        	exit(1);
+    	}
+
+    	if (recvMsgSize == 0) {
     		break;
     	}
     		
@@ -119,16 +135,10 @@ void handle_connection (int clientSocket, string doc_root) {
     		// cout << "Handling client2 \n";
     		requestMsg = httpParser::parse(framer.topMessage()); 
     		framer.popMessage();
-    		// string ansStr = "method " + requestMsg.method + "\nURL " + requestMsg.URL + "\nhttp_version " + requestMsg.http_version + "\n";
-    		// for (auto key: requestMsg.key_values) {
-    		// 	ansStr += key.first + " " + key.second + "\n";
-    		// }
 
     		responseMsg = process_request(requestMsg, doc_root);
     		string retMsg = httpParser::create_response(responseMsg);
-    		// string resStr = ansStr + retMsg;
     		
-  
     		const char *res = retMsg.c_str();
     		send(clntSocket, res, retMsg.size(), 0);
     		if(responseMsg.status == "200") {
@@ -143,10 +153,11 @@ void handle_connection (int clientSocket, string doc_root) {
     			// sendfile(clntSocket, fd, 0, len);
     			close(fd);
     		}
-    	}
-    	if (requestMsg.key_values.count("Connection") &&
-    		requestMsg.key_values["Connection"] == "close")
-    		break;
+
+    		if (requestMsg.key_values.count("Connection") &&
+    			requestMsg.key_values["Connection"] == "close")
+    			break;
+    	} 	
     }
     close(clntSocket); 		
 }
@@ -213,20 +224,4 @@ httpResponse process_request(httpRequest requestMsg, string doc_root) {
 	return response;
 }
 
-
-// string create_response(httpResponse responseMsg) {
-// 	string ret;
-// 	ret = responseMsg.http_version + " " + responseMsg.status + " " + responseMsg.text + "\r\n";
-// 	ret = ret + "Server: " + responseMsg.key_values["Server"] + "\r\n";
-// 	if (responseMsg.status == "200")
-// 		ret = ret + "Last-Modified: " + responseMsg.key_values["Last-Modified"] + "\r\n";
-// 	ret = ret + "Content-Type: " + responseMsg.key_values["Content-Type"] + "\r\n";
-// 	ret = ret + "Content-Length: " + responseMsg.key_values["Content-Length"] + "\r\n";
-// 	ret += "\r\n";
-// 	if (responseMsg.body != "") {
-// 		ret += responseMsg.body;
-// 		ret += "\r\n";
-// 	}
-// 	return ret;
-// }
 

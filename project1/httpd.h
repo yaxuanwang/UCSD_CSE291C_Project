@@ -14,6 +14,4 @@ void handle_connection (int clientSocket, string root);
 
 httpResponse process_request(httpRequest requestMsg, string doc_root);
 
-// string create_response(httpResponse responseMsg);
-
 #endif // HTTPD_H
