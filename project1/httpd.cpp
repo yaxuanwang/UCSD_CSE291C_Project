@@ -63,7 +63,7 @@ void start_httpd(unsigned short port, string doc_root)
         
      	// concurrent connect with timeout
     	struct timeval timeout;      
-		timeout.tv_sec = 5;
+		timeout.tv_sec = 10;
 		timeout.tv_usec = 0;
 
 		if (setsockopt (clnt_sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout,
@@ -83,8 +83,7 @@ void start_httpd(unsigned short port, string doc_root)
       //       exit(1);
       //   }
         std::thread td(handle_connection, clnt_sock, doc_root);
-        td.join();
-        // handle_connection(clnt_sock, doc_root);
+        td.detach();
     }
     close(serv_sock);
 }
