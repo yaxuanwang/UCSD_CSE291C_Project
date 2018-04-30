@@ -1,20 +1,19 @@
-
 CC=g++
-CFLAGS=-ggdb -std=c++11 -Wall -Wextra -pedantic -Werror
+CFLAGS=-std=c++11
+#-Wall -Wextra -pedantic  
 DEPS = httpd.h httpParser.hpp httpFramer.hpp fileHelper.hpp
 SRCS = httpd.cpp httpParser.cpp httpFramer.cpp fileHelper.cpp
-MAIN_SRCS = main.c $(SRCS)
-MAIN_OBJS = $(MAIN_SRCS:.c=.o)
+MAIN_SRCS =  $(wildcard *.cpp) 
+MAIN_OBJS = $(MAIN_SRCS:.cpp=.o)
 
-default: httpd
+default: httpd 
 
-%.o: %.c $(DEPS)
-	$(CC) -c -o $@ $< $(CFLAGS)
+httpd:   $(MAIN_OBJS)
+	$(CC) $(CFLAGS) -o $@ $(MAIN_OBJS) -lpthread
 
-httpd:    $(MAIN_OBJS)
-	$(CC) $(CFLAGS) -o httpd $(MAIN_OBJS) -lpthread
-
-.c.o:
+%.o: %.cpp 
+	$(CC) $(CFLAGS) -c -o $@ $< 
+.cpp.o:
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:

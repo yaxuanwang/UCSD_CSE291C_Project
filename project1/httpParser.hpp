@@ -9,9 +9,9 @@ using namespace std;
 
 // Format of http request
 typedef struct http_request {
-	string method;
-	string URL;
-	string http_version;
+	string method;        // GET
+	string URL;      
+	string http_version;  // HTTP/1.1
 	unordered_map<string, string> key_values;
 	bool valid;
 } httpRequest;
@@ -20,17 +20,20 @@ typedef struct http_request {
 // Format of http response
 typedef struct http_response {
 	string http_version;
-	string status; // code with text
-	string text;
+	string status;      // 200, 400, 403, 404
+	string text;       
 	string body;
-	string path;
+	string path;        // requested valid file path
 	unordered_map<string, string> key_values;
 } httpResponse;
 
 
 class httpParser {
 public:
+	// parse read-in message into httpRequest format
 	static httpRequest parse(string http_str);
+
+	// from httpResponse format construct response header
 	static string create_response(httpResponse responseMsg);
 };
 

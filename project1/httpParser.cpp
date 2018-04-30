@@ -17,8 +17,8 @@ http_request httpParser::parse(std::string http_str)
 	if (http_str.size() == 0) {
 		return ret;
 	}
-	
 	ret.valid = true;
+
 	// parse http_str into header and key_value lines
 	int http_str_len = http_str.size();
 	for(int i=0; i < http_str_len; i++) {
@@ -33,7 +33,6 @@ http_request httpParser::parse(std::string http_str)
 	for(int i=0; i < key_values_len; i++) {
 		if( i+1 < key_values_len && key_values.substr(i, 2) == "\r\n") {
 			pairs.push_back(key_values.substr(j, i-j));
-			// cout << "key_value pair is " << key_values.substr(j, i-j)<<endl;
 			j = i + 2;
 		}
 	}
@@ -56,12 +55,12 @@ http_request httpParser::parse(std::string http_str)
 		return ret;
 	}
 
-
 	// parse key_value pairs
 	string key, value;
 	for (string pair: pairs) {
 		pair.erase(std::remove(pair.begin(), pair.end(), ' '), pair.end());
 		std::stringstream item(pair);
+
 		// missing colon is invalid
 		if (pair.find(":") == std::string::npos) {
     		ret.valid = false;
@@ -69,8 +68,7 @@ http_request httpParser::parse(std::string http_str)
 		}
 		getline(item, key, ':');
 		getline(item, value);
-		// cout << "key is: " + key << endl;
-		// cout << "value is: " + value << endl;
+
 		if (!ret.key_values.count(key)) {
 			ret.key_values[key] = value;
 		}

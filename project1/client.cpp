@@ -41,9 +41,16 @@ int main(int argc, char *argv[])
         printf("\nConnection Failed \n");
         return -1;
     }
-    if (send(sock , message.c_str() , message.length() , 0 ) < 0) {
-    	printf("error");
-    };
+    int len = message.size();
+    for (int i = 0; i < len; ) {
+        int j = i + rand() % (len - i) + 1;
+        send(sock, message.substr(i, j - i).c_str(), j - i, 0);
+        sleep(1);
+        i = j;
+    }
+//    if (send(sock , message.c_str() , message.length() , 0 ) < 0) {
+//        printf("error");
+//    };
     // printf("Hello message sent\n");
     int numRecv;
     numRecv = recv(sock, buffer, BUFSIZE, 0);
