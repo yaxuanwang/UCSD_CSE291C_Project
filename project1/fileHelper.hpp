@@ -18,7 +18,7 @@ long get_content_Length(const string abs_path);
 // check if the given path exists a file
 bool file_exists(const string abs_path);
 
-// check if the corresponding file is "global readable"
+// check if the corresponding file is "world readable"
 bool has_permission(const string abs_path);
 
 

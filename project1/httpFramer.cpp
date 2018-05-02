@@ -14,7 +14,6 @@ void httpFramer::append(string chars)
 
 bool httpFramer::hasMessage() const
 {
-	// cout << "current Message is:" << m_buffer << endl;
 	int m_buffer_len = m_buffer.size();
 	for (int i=0; i<m_buffer_len; i++) {
 		if( i+3 < m_buffer_len && m_buffer.substr(i, 4) == "\r\n\r\n") {

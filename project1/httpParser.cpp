@@ -10,14 +10,15 @@ using namespace std;
 
 http_request httpParser::parse(std::string http_str)
 {
-	httpRequest ret;
+	httpRequest* ret = new httpRequest();
 	string header; 
 	vector<string> pairs;
 	string key_values;
 	if (http_str.size() == 0) {
-		return ret;
+		ret->valid = false;
+		return *ret;
 	}
-	ret.valid = true;
+	ret->valid = true;
 
 	// parse http_str into header and key_value lines
 	int http_str_len = http_str.size();
@@ -40,19 +41,19 @@ http_request httpParser::parse(std::string http_str)
 
 	// parse header into httpRequest
 	std::stringstream ss(header);
-	getline(ss, ret.method, ' ');
-	if (ret.method != "GET") {
-		ret.valid = false;
-		return ret;
+	getline(ss, ret->method, ' ');
+	if (ret->method != "GET") {
+		ret->valid = false;
+		return *ret;
 	}
-	getline(ss, ret.URL, ' ');
-	if (ret.URL == "/") {
-		ret.URL = "/index.html";
+	getline(ss, ret->URL, ' ');
+	if (ret->URL == "/") {
+		ret->URL = "/index.html";
 	}
-	getline(ss, ret.http_version);
-	if (ret.http_version != "HTTP/1.1") {
-		ret.valid = false;
-		return ret;
+	getline(ss, ret->http_version);
+	if (ret->http_version != "HTTP/1.1") {
+		ret->valid = false;
+		return *ret;
 	}
 
 	// parse key_value pairs
@@ -63,24 +64,27 @@ http_request httpParser::parse(std::string http_str)
 
 		// missing colon is invalid
 		if (pair.find(":") == std::string::npos) {
-    		ret.valid = false;
+    		ret->valid = false;
     		break;
 		}
 		getline(item, key, ':');
 		getline(item, value);
-
-		if (!ret.key_values.count(key)) {
-			ret.key_values[key] = value;
+		
+		// empty key is invalid
+		if (key != "") {
+			ret->key_values[key] = value;
 		}
 		else {
-			ret.valid = false;
-		}	
+			ret->valid = false;
+		}
+		
 	}
-	if (!ret.key_values.count("Host")) {
-		ret.valid = false;
+
+	if (!ret->key_values.count("Host")) {
+		ret->valid = false;
 	}
 	
-	return ret;
+	return *ret;
 }
 
 

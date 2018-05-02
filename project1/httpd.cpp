@@ -39,7 +39,7 @@ void start_httpd(unsigned short port, string doc_root)
         cerr << "Failed to bind" << endl;
         exit(1);
     }
-    if (listen(serv_sock, 5) < 0) {
+    if (listen(serv_sock, 10) < 0) {
         cerr << "Failed to listen" << endl;
         exit(1);
     }
@@ -132,7 +132,7 @@ void handle_connection (int clientSocket, string doc_root) {
     		const char *res = retMsg.c_str();
     		send(clntSocket, res, retMsg.size(), 0);
 
-    		// 
+    		// if return code is 200, send back file
     		if(responseMsg.status == "200") {
     			int fd;
     			if ((fd = open(responseMsg.path.c_str(), O_RDONLY)) < 0) {
