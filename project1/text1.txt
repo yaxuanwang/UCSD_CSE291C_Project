@@ -1,3 +1,0 @@
-GET /subdir1/wolves.jpg HTTP/1.1
-Host: localhost
-User-Agent: cse124-tester/1.0
