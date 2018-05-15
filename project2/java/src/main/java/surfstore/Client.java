@@ -3,6 +3,8 @@ package surfstore;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
@@ -17,7 +19,8 @@ import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
 import surfstore.SurfStoreBasic.Empty;
 import surfstore.SurfStoreBasic.Block;
-import surfstore.SurfStoreBasic.Block.*;
+import surfstore.SurfStoreBasic.FileInfo;
+import surfstore.SurfStoreBasic.WriteResult;
 
 import javax.imageio.IIOException;
 
@@ -57,7 +60,7 @@ public final class Client {
     }
 
     private static Block stringToBlock (byte[] chunk) {
-        Builder builder = Block.newBuilder();
+        Block.Builder builder = Block.newBuilder();
         builder.setData(ByteString.copyFrom(chunk));
 
         builder.setHash(HashUtils.sha256(chunk));
@@ -96,7 +99,21 @@ public final class Client {
         return blockList;
     }
 
-	private void go(String[] args) {
+    private static void writeBlocksToFile (ArrayList<Block> blocks, String filepath) {
+        try {
+            File localFile = new File(filepath);
+            localFile.createNewFile();
+            FileOutputStream stream = new FileOutputStream(filepath, false);
+            for (Block b: blocks) {
+                stream.write(b.getData().toByteArray());
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot write to local file: " + filepath);
+        }
+    }
+
+
+	private void go (String[] args) {
 //		metadataStub.ping(Empty.newBuilder().build());
 //        logger.info("Successfully pinged the Metadata server");
         
@@ -106,7 +123,6 @@ public final class Client {
         // TODO: Implement your client here
         Namespace c_args = parseArgs(args);
         String operation = c_args.getString("operations");
-        int answer = 0;
         switch(operation) {
             case "upload":
                 upload(c_args.getString("filename"));
@@ -118,44 +134,82 @@ public final class Client {
                 delete(c_args.getString("filename"));
                 break;
             case "getversion":
-                answer = getVersion(c_args.getString("filename"));
+                getVersion(c_args.getString("filename"));
                 break;
             default:
                 throw new RuntimeException("Invalid operation: " + operation);
         }
-//        Block b1 = stringToBlock("block_01");
-//        Block b2 = stringToBlock("block_02");
-//
-//        ensure(blockStub.hasBlock(b1).getAnswer() == false);
-//        ensure(blockStub.hasBlock(b2).getAnswer() == false);
-//
-//        blockStub.storeBlock(b1);
-//        ensure(blockStub.hasBlock(b1).getAnswer() == true);
-//
-//        blockStub.storeBlock(b2);
-//        ensure(blockStub.hasBlock(b2).getAnswer() == true);
-//
-//        Block b1prime = blockStub.getBlock(b1);
-//        ensure(b1prime.getHash().equals(b1.getHash()));
-//        ensure(b1prime.getData().equals(b1.getData()));
-//
-//        logger.info("We passed all the tests!");
 	}
 
-    private void upload(String filename) {
+    private void upload (String filename) {
+        int version = getVersion(filename);
+
+        ArrayList<Block> blocks = fileToBlocks(filename);
+        Map<String, Block> tmpMap = new HashMap<>();
+        for(Block b: blocks) {
+            tmpMap.put(b.getHash(), b);
+        }
+        FileInfo.Builder builder = FileInfo.newBuilder();
+
+        builder.setFilename(filename);
+        builder.setVersion(version+1);
+        for (int i=0; i<blocks.size(); i++) {
+            builder.setBlocklist(i, blocks.get(i).getHash());
+        }
+
+        FileInfo request = builder.build();
+        WriteResult result = WriteResult.newBuilder(metadataStub.modifyFile(request)).build();
+        while (result.getResult() == WriteResult.Result.MISSING_BLOCKS) {
+            int count = result.getMissingBlocksCount();
+            for (int i=0; i<count; i++) {
+                blockStub.storeBlock(tmpMap.get(result.getMissingBlocks(i)));
+            }
+            result = WriteResult.newBuilder(metadataStub.modifyFile(request)).build();
+        }
+        if (result.getResult() == WriteResult.Result.OLD_VERSION) {
+            upload(filename);
+        } else if (result.getResult() == WriteResult.Result.OK) {
+            logger.info("Successfully uploaded file: " + filename);
+        }
 
     }
 
-    private void download(String filename, String downloadPath) {
-
+    private void download (String filename, String downloadPath) {
+        FileInfo readRequest = FileInfo.newBuilder().setFilename(filename).build();
+        FileInfo readResult = metadataStub.readFile(readRequest);
+        ArrayList<String> blockHash = new ArrayList<>(readResult.getBlocklistList());
+        //TODO: what if there are some missing blocks
+        ArrayList<Block> blocks = new ArrayList<>();
+        for (String h: blockHash) {
+            Block b = blockStub.getBlock(Block.newBuilder().setHash(h).build());
+            blocks.add(b);
+        }
+        writeBlocksToFile(blocks, downloadPath+ "/" + filename);
+        logger.info("Successfully downloaded file: " + filename);
     }
 
-    private void delete(String filename) {
+    private void delete (String filename) {
+        int version = getVersion(filename);
+        FileInfo.Builder builder  = FileInfo.newBuilder();
+        builder.setFilename(filename);
+        builder.setVersion(version+1);
+
+        FileInfo deleteRequest = builder.build();
+        WriteResult result = metadataStub.deleteFile(deleteRequest);
+
+        if (result.getResult() == WriteResult.Result.OLD_VERSION) {
+            delete(filename);
+        } else if (result.getResult() == WriteResult.Result.OK) {
+            logger.info("Successfully deleted file: " + filename);
+        }
 
     }
 
     private int getVersion(String filename) {
-        return 0;
+        FileInfo fileInfo = FileInfo.newBuilder().setFilename(filename).build();
+        int version = metadataStub.readFile(fileInfo).getVersion();
+        logger.info("Current version of file " + filename + " is " + version);
+        return version;
     }
 
 	/*
