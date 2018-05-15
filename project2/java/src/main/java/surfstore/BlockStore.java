@@ -144,10 +144,5 @@ public final class BlockStore {
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         }
-
-        public boolean hasHash(String hash) {
-            return blockMap.containsKey(hash);
-        }
-
     }
 }

@@ -159,23 +159,77 @@ public final class MetadataStore {
             String filename = request.getFilename();
             int version = request.getVersion();
             ArrayList<String> hashlist = new ArrayList<>(request.getBlocklistList());
-            for (String hash: hashlist) {
-                Block b = Block.newBuilder().setHash(hash).build();
-                if (!blockStub.hasBlock(b).getAnswer()) {
 
+            // create a new file or modify an existing file
+            if (!versionMap.containsKey(filename) && version == 1
+                    || versionMap.containsKey(filename) && version == versionMap.get(filename)+1) {
+                boolean missing = false;
+                int i = 0;
+                for (String hash: hashlist) {
+                    Block b = Block.newBuilder().setHash(hash).build();
+                    if (!blockStub.hasBlock(b).getAnswer()) {
+                        missing = true;
+                        builder.setMissingBlocks(i, hash);
+                        i++;
+                    }
                 }
+                if(missing) {
+                    builder.setResult(WriteResult.Result.MISSING_BLOCKS);
+                    builder.setCurrentVersion(version);
+                } else {
+                    builder.setResult(WriteResult.Result.OK);
+                    builder.setCurrentVersion(version);
+                    versionMap.put(filename, version);
+                    blockHashMap.put(filename, hashlist);
+                }
+                WriteResult response = builder.build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
             }
+            //TODO: what if versionMap does not contain file while version!=1?
+            else if (!versionMap.containsKey(filename) || version != versionMap.get(filename)+1){
+                builder.setResult(WriteResult.Result.OLD_VERSION);
+                builder.setCurrentVersion(versionMap.get(filename));
 
-            if (versionMap.containsKey(filename) && version == versionMap.get(filename)+1) {
-                versionMap.put(filename, ++version);
+                WriteResult response = builder.build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
             }
-
         }
 
         @Override
         public void deleteFile(surfstore.SurfStoreBasic.FileInfo request,
                                io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.WriteResult> responseObserver) {
+            logger.info("Deleting file: " + request.getFilename());
+            WriteResult.Builder builder = WriteResult.newBuilder();
 
+            String filename = request.getFilename();
+            int version = request.getVersion();
+
+            if (!versionMap.containsKey(filename)) {
+                //TODO: what to do?
+            }
+            if (versionMap.containsKey(filename) && version == versionMap.get(filename)+1) {
+                builder.setResult(WriteResult.Result.OK);
+                builder.setCurrentVersion(version);
+                versionMap.put(filename, version);
+                ArrayList<String> deleteList = new ArrayList<>();
+                deleteList.add("0");
+                blockHashMap.put(filename, deleteList);
+
+                WriteResult response = builder.build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+            }
+            //TODO: what if versionMap does not contain file while version!=1?
+            else if (!versionMap.containsKey(filename) || version != versionMap.get(filename)+1){
+                builder.setResult(WriteResult.Result.OLD_VERSION);
+                builder.setCurrentVersion(versionMap.get(filename));
+
+                WriteResult response = builder.build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+            }
         }
 
         @Override
