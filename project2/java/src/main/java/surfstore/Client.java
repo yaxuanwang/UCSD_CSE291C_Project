@@ -1,10 +1,10 @@
 package surfstore;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.HashMap;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+import java.util.Base64;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
@@ -22,7 +22,6 @@ import surfstore.SurfStoreBasic.Block;
 import surfstore.SurfStoreBasic.FileInfo;
 import surfstore.SurfStoreBasic.WriteResult;
 
-import javax.imageio.IIOException;
 
 
 public final class Client {
@@ -59,11 +58,25 @@ public final class Client {
         }
     }
 
+    private static String sha256 (byte[] text) {
+        MessageDigest digest = null;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+            System.exit(2);
+        }
+        byte[] hash = digest.digest(text);
+        String encoded = Base64.getEncoder().encodeToString(hash);
+        return encoded;
+    }
+
     private static Block stringToBlock (byte[] chunk) {
         Block.Builder builder = Block.newBuilder();
         builder.setData(ByteString.copyFrom(chunk));
 
-        builder.setHash(HashUtils.sha256(chunk));
+        builder.setHash(sha256(chunk));
+        logger.info("Block hash is:" + sha256(chunk));
         return builder.build();
     }
 
@@ -93,7 +106,7 @@ public final class Client {
                 }
             }
         } catch (IOException e) {
-            System.out.println("Exception while splitting the file " + e);
+            throw new RuntimeException("Exception while splitting the file " + e);
         }
 
         return blockList;
@@ -114,8 +127,8 @@ public final class Client {
 
 
 	private void go (String[] args) {
-//		metadataStub.ping(Empty.newBuilder().build());
-//        logger.info("Successfully pinged the Metadata server");
+		metadataStub.ping(Empty.newBuilder().build());
+        logger.info("Successfully pinged the Metadata server");
         
         blockStub.ping(Empty.newBuilder().build());
         logger.info("Successfully pinged the Blockstore server");
@@ -153,9 +166,11 @@ public final class Client {
 
         builder.setFilename(filename);
         builder.setVersion(version+1);
+        ArrayList<String> hashlist = new ArrayList<>();
         for (int i=0; i<blocks.size(); i++) {
-            builder.setBlocklist(i, blocks.get(i).getHash());
+            hashlist.add(blocks.get(i).getHash());
         }
+        builder.addAllBlocklist(hashlist);
 
         FileInfo request = builder.build();
         WriteResult result = WriteResult.newBuilder(metadataStub.modifyFile(request)).build();
@@ -235,7 +250,9 @@ public final class Client {
         try {
             res = parser.parseArgs(args);
             if (res.getString("operations").equals("download")
-                    && res.getString("downloadPath").equals("")) {
+                    && res.getString("downloadPath").equals("")
+                    ||!res.getString("operations").equals("download")
+                    && !res.getString("downloadPath").equals("") ) {
                 throw new RuntimeException("Argument parsing failed");
             }
         } catch (ArgumentParserException e){

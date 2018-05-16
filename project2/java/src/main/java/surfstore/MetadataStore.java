@@ -140,9 +140,7 @@ public final class MetadataStore {
 
             if (blockHashMap.containsKey(filename)) {
                 ArrayList<String> hashList = new ArrayList<>(blockHashMap.get(filename));
-                for (int i=0; i<hashList.size(); i++) {
-                    builder.setBlocklist(i, hashList.get(i));
-                }
+                builder.addAllBlocklist(hashList);
             }
 
             FileInfo response = builder.build();
@@ -165,15 +163,17 @@ public final class MetadataStore {
                     || versionMap.containsKey(filename) && version == versionMap.get(filename)+1) {
                 boolean missing = false;
                 int i = 0;
+                ArrayList<String> missingBlocks = new ArrayList<>();
                 for (String hash: hashlist) {
                     Block b = Block.newBuilder().setHash(hash).build();
                     if (!blockStub.hasBlock(b).getAnswer()) {
                         missing = true;
-                        builder.setMissingBlocks(i, hash);
+                        missingBlocks.add(hash);
                         i++;
                     }
                 }
                 if(missing) {
+                    builder.addAllMissingBlocks(missingBlocks);
                     builder.setResult(WriteResult.Result.MISSING_BLOCKS);
                     builder.setCurrentVersion(version);
                 } else {
