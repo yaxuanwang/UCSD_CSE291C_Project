@@ -36,7 +36,7 @@ public final class Client {
     private final ConfigReader config;
 
     public Client(ConfigReader config) {
-        this.metadataChannel = ManagedChannelBuilder.forAddress("127.0.0.1", config.getMetadataPort(1))
+        this.metadataChannel = ManagedChannelBuilder.forAddress("127.0.0.1", config.getMetadataPort(config.getLeaderNum()))
                 .usePlaintext(true).build();
         this.metadataStub = MetadataStoreGrpc.newBlockingStub(metadataChannel);
 
@@ -205,6 +205,9 @@ public final class Client {
 
     private void delete (String filename) {
         int version = getVersion(filename);
+        if (version == 0) {
+            throw new RuntimeException("Cannot delete non-existing file: " + filename);
+        }
         FileInfo.Builder builder  = FileInfo.newBuilder();
         builder.setFilename(filename);
         builder.setVersion(version+1);
