@@ -17,12 +17,7 @@ import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
-import surfstore.SurfStoreBasic.Empty;
-import surfstore.SurfStoreBasic.Block;
-import surfstore.SurfStoreBasic.FileInfo;
-import surfstore.SurfStoreBasic.WriteResult;
-import surfstore.SurfStoreBasic.SimpleAnswer;
-
+import surfstore.SurfStoreBasic.*;
 
 
 public final class MetadataStore {
@@ -30,11 +25,9 @@ public final class MetadataStore {
 
     protected Server server;
 	protected ConfigReader config;
-	protected static boolean isLeader = false;
-	protected static ArrayList<MetadataStoreGrpc.MetadataStoreBlockingStub> metadataStubs;
 
-    private static ManagedChannel blockChannel;
-    private static BlockStoreGrpc.BlockStoreBlockingStub blockStub;
+    private ManagedChannel blockChannel;
+    private BlockStoreGrpc.BlockStoreBlockingStub blockStub;
 
     public MetadataStore(ConfigReader config) {
         this.config = config;
@@ -44,9 +37,10 @@ public final class MetadataStore {
 //        config.getLeaderNum();
 	}
 
-	private void start(int port, int numThreads) throws IOException {
+	private void start(int port, int numThreads, boolean leader,
+                       ArrayList<MetadataStoreGrpc.MetadataStoreBlockingStub> metadataStubs) throws IOException {
         server = ServerBuilder.forPort(port)
-                .addService(new MetadataStoreImpl())
+                .addService(new MetadataStoreImpl(blockStub, leader, metadataStubs))
                 .executor(Executors.newFixedThreadPool(numThreads))
                 .build()
                 .start();
@@ -105,8 +99,10 @@ public final class MetadataStore {
             throw new RuntimeException(String.format("metadata%d not in config file", c_args.getInt("number")));
         }
         final MetadataStore server = new MetadataStore(config);
+        boolean leader = false;
+        ArrayList<MetadataStoreGrpc.MetadataStoreBlockingStub> metadataStubs = new ArrayList<>();
         if (config.getLeaderNum() == c_args.getInt("number")) {
-            isLeader = true;
+            leader = true;
             for (int i=1; i<config.getNumMetadataServers(); i++) {
                 if (i != config.getLeaderNum()) {
                     ManagedChannel metadataChannel = ManagedChannelBuilder
@@ -117,21 +113,35 @@ public final class MetadataStore {
                 }
             }
         }
-        server.start(config.getMetadataPort(c_args.getInt("number")), c_args.getInt("threads"));
+        server.start(config.getMetadataPort(c_args.getInt("number")), c_args.getInt("threads"),
+                leader, metadataStubs);
         server.blockUntilShutdown();
     }
 
     static class MetadataStoreImpl extends MetadataStoreGrpc.MetadataStoreImplBase {
         protected Map<String, Integer> versionMap;
         protected Map<String, ArrayList<String>> blockHashMap;
-        protected boolean isCrashed = false;
+        private boolean isCrashed = false;
+        private boolean isLeader;
+        private BlockStoreGrpc.BlockStoreBlockingStub blockStub;
+        private ArrayList<MetadataStoreGrpc.MetadataStoreBlockingStub> metadataStubs;
+        private ArrayList<Log> logEntries;
+        private int clusterNum;
 
 
-        public MetadataStoreImpl() {
+        public MetadataStoreImpl(BlockStoreGrpc.BlockStoreBlockingStub blockStub,
+                                 boolean isLeader,
+                                 ArrayList<MetadataStoreGrpc.MetadataStoreBlockingStub> metadataStubs) {
             super();
             this.versionMap = new HashMap<>();
             this.blockHashMap = new HashMap();
+            this.blockStub = blockStub;
+            this.isLeader = isLeader;
+            this.metadataStubs = metadataStubs;
+            this.logEntries = new ArrayList<>();
+            this.clusterNum = metadataStubs.size() + 1;
         }
+
 
         @Override
         public void ping(Empty req, final StreamObserver<Empty> responseObserver) {
@@ -144,12 +154,14 @@ public final class MetadataStore {
         @Override
         public void readFile(surfstore.SurfStoreBasic.FileInfo request,
                              io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.FileInfo> responseObserver) {
+            //TODO: what to return if not leader??
             if (!isLeader) {
                 throw new RuntimeException("Calling non-leader server!");
             }
             logger.info("Reading file: " + request.getFilename());
-            FileInfo.Builder builder = FileInfo.newBuilder();
 
+
+            FileInfo.Builder builder = FileInfo.newBuilder();
             String filename = request.getFilename();
             int version = 0;
             builder.setFilename(filename);
@@ -158,6 +170,20 @@ public final class MetadataStore {
             } else {
                 logger.info("Warning: file " + request.getFilename() + " does not exist!");
                 versionMap.put(filename, 0);
+            }
+            // Write log and append entries
+            writeLog(version, "readFile", filename);
+            int vote = 0;
+            for (int i=0; i<metadataStubs.size(); i++) {
+                Empty crash = Empty.newBuilder().build();
+                if (!metadataStubs.get(i).isCrashed(crash).getAnswer()) {
+                    AppendResult result = metadataStubs.get(i).appendEntries(logEntries.get(logEntries.size() - 1));
+                    if (result.getResult() == AppendResult.Result.OK) {
+                        vote++;
+                    } else if (result.getResult() == AppendResult.Result.MISSING_LOGS) {
+                        //TODO: resend missing logs to sync
+                    }
+                }
             }
             builder.setVersion(version);
 
@@ -176,6 +202,14 @@ public final class MetadataStore {
                                io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.WriteResult> responseObserver) {
             logger.info("Modifying file: " + request.getFilename());
             WriteResult.Builder builder = WriteResult.newBuilder();
+
+            if (!isLeader) {
+                builder.setResult(WriteResult.Result.NOT_LEADER);
+                WriteResult response = builder.build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+                return;
+            }
 
             String filename = request.getFilename();
             int version = request.getVersion();
@@ -226,6 +260,14 @@ public final class MetadataStore {
             logger.info("Deleting file: " + request.getFilename());
             WriteResult.Builder builder = WriteResult.newBuilder();
 
+            if (!isLeader) {
+                builder.setResult(WriteResult.Result.NOT_LEADER);
+                WriteResult response = builder.build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+                return;
+            }
+
             String filename = request.getFilename();
             int version = request.getVersion();
 
@@ -272,6 +314,9 @@ public final class MetadataStore {
         @Override
         public void crash(surfstore.SurfStoreBasic.Empty request,
                           io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.Empty> responseObserver) {
+            if (isLeader) {
+                throw new RuntimeException("Leader will not crash!");
+            }
             isCrashed = true;
             Empty response = Empty.newBuilder().build();
             responseObserver.onNext(response);
@@ -281,6 +326,9 @@ public final class MetadataStore {
         @Override
         public void restore(surfstore.SurfStoreBasic.Empty request,
                             io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.Empty> responseObserver) {
+            if (isLeader) {
+                throw new RuntimeException("Leader doesn't need to restore!");
+            }
             isCrashed = false;
             Empty response = Empty.newBuilder().build();
             responseObserver.onNext(response);
@@ -297,5 +345,22 @@ public final class MetadataStore {
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         }
+
+        @Override
+        public void appendEntries(surfstore.SurfStoreBasic.Log request,
+                                  io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.AppendResult> responseObserver) {
+
+        }
+
+
+        private void writeLog (int version, String operation, String filename) {
+            Log.Builder builder = Log.newBuilder();
+            builder.setVersion(version);
+            builder.setOperation(operation);
+            builder.setFilename(filename);
+
+            logEntries.add(builder.build());
+        }
+
     }
 }

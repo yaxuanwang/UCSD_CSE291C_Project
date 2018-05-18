@@ -69,6 +69,9 @@ service MetadataStore {
 
     // YOU CAN INSERT ADDITIONAL RPC CALLS HERE TO IMPLEMENT PART 2
     // OF THE PROJECT, BUT PLEASE DON'T MODIFY THE ABOVE CALLS/ARGUMENTS
+
+    // Leader can append Log entry to followers
+    rpc AppendEntries(Log) returns (AppendResult) {}
 }
 
 service BlockStore {
@@ -127,4 +130,19 @@ message SimpleAnswer {
 
 message NodeList {
     repeated int32 nodelist = 1;
+}
+
+message Log {
+    int32 version = 1;
+    string operation = 2;
+    string filename = 3;
+}
+
+message AppendResult {
+    enum Result {
+        OK = 0;
+        MISSING_LOGS = 1;
+    }
+    Result result = 1;
+    repeated int32 missing_logs = 2;
 }
