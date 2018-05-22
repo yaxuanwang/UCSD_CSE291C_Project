@@ -1,6 +1,7 @@
 package surfstore;
 
 import java.io.*;
+import java.lang.reflect.Array;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
@@ -125,6 +126,23 @@ public final class Client {
         }
     }
 
+    private static Map<String, Block> findLocalBlocks(String path) {
+        Map<String, Block> ret = new HashMap<>();
+        File folder = new File(path);
+        File[] listOfFiles = folder.listFiles();
+
+        for (File file : listOfFiles) {
+            if (file.isFile()) {
+                System.out.println(file.getName());
+                ArrayList<Block> blockList = fileToBlocks(path + file.getName());
+                for (Block b: blockList) {
+                    ret.put(b.getHash(), b);
+                }
+            }
+        }
+
+        return ret;
+    }
 
 	private void go (String[] args) {
 		metadataStub.ping(Empty.newBuilder().build());
@@ -197,8 +215,13 @@ public final class Client {
         ArrayList<Block> blocks = new ArrayList<>();
         for (String h: blockHash) {
             // if block is not locally stored
-            Block b = blockStub.getBlock(Block.newBuilder().setHash(h).build());
-            blocks.add(b);
+            Map<String, Block> localBlocks = findLocalBlocks(downloadPath + '/');
+            if (localBlocks.containsKey(h)) {
+                blocks.add(localBlocks.get(h));
+            } else {
+                Block b = blockStub.getBlock(Block.newBuilder().setHash(h).build());
+                blocks.add(b);
+            }
         }
         writeBlocksToFile(blocks, downloadPath+ "/" + filename);
         logger.info("Successfully downloaded file: " + filename);
