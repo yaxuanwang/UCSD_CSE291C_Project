@@ -72,6 +72,9 @@ service MetadataStore {
 
     // Leader can append Log entry to followers
     rpc AppendEntries(Log) returns (AppendResult) {}
+
+    // phase two commit, process as logs
+    rpc Commit(Log) returns (Empty) {}
 }
 
 service BlockStore {
@@ -136,6 +139,8 @@ message Log {
     int32 version = 1;
     string operation = 2;
     string filename = 3;
+    repeated string hashlist = 4;
+    int32 index = 5;
 }
 
 message AppendResult {

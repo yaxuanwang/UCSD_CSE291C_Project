@@ -2,6 +2,7 @@ package surfstore;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.ArrayList;
@@ -160,7 +161,6 @@ public final class MetadataStore {
             }
             logger.info("Reading file: " + request.getFilename());
 
-
             FileInfo.Builder builder = FileInfo.newBuilder();
             String filename = request.getFilename();
             int version = 0;
@@ -171,20 +171,8 @@ public final class MetadataStore {
                 logger.info("Warning: file " + request.getFilename() + " does not exist!");
                 versionMap.put(filename, 0);
             }
-            // Write log and append entries
-            writeLog(version, "readFile", filename);
-            int vote = 0;
-            for (int i=0; i<metadataStubs.size(); i++) {
-                Empty crash = Empty.newBuilder().build();
-                if (!metadataStubs.get(i).isCrashed(crash).getAnswer()) {
-                    AppendResult result = metadataStubs.get(i).appendEntries(logEntries.get(logEntries.size() - 1));
-                    if (result.getResult() == AppendResult.Result.OK) {
-                        vote++;
-                    } else if (result.getResult() == AppendResult.Result.MISSING_LOGS) {
-                        //TODO: resend missing logs to sync
-                    }
-                }
-            }
+            // TODO: Write log and append entries??
+//            writeLog(version, "readFile", filename);
             builder.setVersion(version);
 
             if (blockHashMap.containsKey(filename)) {
@@ -195,6 +183,45 @@ public final class MetadataStore {
             FileInfo response = builder.build();
             responseObserver.onNext(response);
             responseObserver.onCompleted();
+        }
+
+        private synchronized boolean onePhaseCommit() {
+            int vote = 0;
+            for (int i=0; i<metadataStubs.size(); i++) {
+                Empty crash = Empty.newBuilder().build();
+                if (!metadataStubs.get(i).isCrashed(crash).getAnswer()) {
+                    int goal = logEntries.size()-1;
+                    AppendResult result = metadataStubs.get(i).appendEntries(logEntries.get(goal));
+                    if (result.getResult() == AppendResult.Result.OK) {
+                        vote++;
+                    } else if (result.getResult() == AppendResult.Result.MISSING_LOGS) {
+                        //TODO: resend missing logs to sync
+                        ArrayList<Integer> missingLogs = new ArrayList<>(result.getMissingLogsList());
+                        for (Integer idx: missingLogs) {
+                            metadataStubs.get(i).appendEntries(logEntries.get(idx));
+                            metadataStubs.get(i).commit(logEntries.get(idx));
+                            AppendResult check = metadataStubs.get(i).appendEntries(logEntries.get(goal));
+                            // TODO: WHAT TO DO IF HAS BEEN SYNC
+                            if (check.getResult() == AppendResult.Result.OK) {
+                                vote++;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            return vote >= (clusterNum/2+1);
+        }
+
+
+        private synchronized void twoPhaseCommit(Log latestLog) {
+            for(int i=0; i<metadataStubs.size(); i++) {
+                metadataStubs.get(i).commit(latestLog);
+            }
+        }
+
+        private synchronized void syncLogs() {
+
         }
 
         @Override
@@ -219,14 +246,12 @@ public final class MetadataStore {
             if (!versionMap.containsKey(filename) && version == 1
                     || versionMap.containsKey(filename) && version == versionMap.get(filename)+1) {
                 boolean missing = false;
-                int i = 0;
                 ArrayList<String> missingBlocks = new ArrayList<>();
                 for (String hash: hashlist) {
                     Block b = Block.newBuilder().setHash(hash).build();
                     if (!blockStub.hasBlock(b).getAnswer()) {
                         missing = true;
                         missingBlocks.add(hash);
-                        i++;
                     }
                 }
                 if(missing) {
@@ -234,10 +259,16 @@ public final class MetadataStore {
                     builder.setResult(WriteResult.Result.MISSING_BLOCKS);
                     builder.setCurrentVersion(version);
                 } else {
-                    builder.setResult(WriteResult.Result.OK);
-                    builder.setCurrentVersion(version);
-                    versionMap.put(filename, version);
-                    blockHashMap.put(filename, hashlist);
+                    // successfully modify files
+                    writeLog(version, "modifyFile", filename, hashlist);
+                    if (onePhaseCommit()) {  // Actually it will always be true
+                        builder.setResult(WriteResult.Result.OK);
+                        builder.setCurrentVersion(version);
+                        versionMap.put(filename, version);
+                        blockHashMap.put(filename, hashlist);
+                        twoPhaseCommit(logEntries.get(logEntries.size()-1));
+                    }
+
                 }
                 WriteResult response = builder.build();
                 responseObserver.onNext(response);
@@ -278,12 +309,18 @@ public final class MetadataStore {
                 logger.info("Warning: file " + filename + " has been deleted!");
             }
             if (versionMap.containsKey(filename) && version == versionMap.get(filename)+1) {
-                builder.setResult(WriteResult.Result.OK);
-                builder.setCurrentVersion(version);
-                versionMap.put(filename, version);
                 ArrayList<String> deleteList = new ArrayList<>();
                 deleteList.add("0");
-                blockHashMap.put(filename, deleteList);
+                // successfully modify files
+                writeLog(version, "modifyFile", filename, deleteList);
+
+                if (onePhaseCommit()) {
+                    builder.setResult(WriteResult.Result.OK);
+                    builder.setCurrentVersion(version);
+                    versionMap.put(filename, version);
+                    blockHashMap.put(filename, deleteList);
+                    twoPhaseCommit(logEntries.get(logEntries.size()-1));
+                }
 
                 WriteResult response = builder.build();
                 responseObserver.onNext(response);
@@ -349,15 +386,49 @@ public final class MetadataStore {
         @Override
         public void appendEntries(surfstore.SurfStoreBasic.Log request,
                                   io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.AppendResult> responseObserver) {
+            AppendResult.Builder builder = AppendResult.newBuilder();
+            if(request.getIndex() != logEntries.size()) {
+                builder.setResult(AppendResult.Result.MISSING_LOGS);
+                int start = logEntries.size();
+                int end = request.getIndex();
+                ArrayList<Integer> missingIdx = new ArrayList<>();
+                for (int i=start+1; i<end; i++) {
+                    missingIdx.add(i);
+                }
+                builder.addAllMissingLogs(missingIdx);
+            } else {
+                builder.setResult(AppendResult.Result.OK);
+                logEntries.add(request);
+            }
 
+            AppendResult response = builder.build();
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
         }
 
+        @Override
+        public void commit(surfstore.SurfStoreBasic.Log request,
+                           io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.Empty> responseObserver) {
+            if(request.getIndex() != logEntries.size()) {
+                throw new RuntimeException("Commit Error!");
+            }
 
-        private void writeLog (int version, String operation, String filename) {
+            versionMap.put(request.getFilename(), request.getVersion());
+            ArrayList<String> hashlist = new ArrayList<>(request.getHashlistList());
+            blockHashMap.put(request.getFilename(), hashlist);
+
+            Empty response = Empty.newBuilder().build();
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+        }
+
+        private void writeLog (int version, String operation, String filename, ArrayList<String> hashlist) {
             Log.Builder builder = Log.newBuilder();
             builder.setVersion(version);
             builder.setOperation(operation);
             builder.setFilename(filename);
+            builder.addAllHashlist(hashlist);
+            builder.setIndex(logEntries.size());
 
             logEntries.add(builder.build());
         }

@@ -196,6 +196,7 @@ public final class Client {
         //TODO: what if there are some missing blocks
         ArrayList<Block> blocks = new ArrayList<>();
         for (String h: blockHash) {
+            // if block is not locally stored
             Block b = blockStub.getBlock(Block.newBuilder().setHash(h).build());
             blocks.add(b);
         }
