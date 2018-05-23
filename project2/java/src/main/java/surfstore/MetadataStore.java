@@ -409,19 +409,22 @@ public final class MetadataStore {
                 throw new RuntimeException("Follower is crashed, cannot append!");
             }
             AppendResult.Builder builder = AppendResult.newBuilder();
-            if(request.getIndex() != logEntries.size()) {
+            if(request.getIndex() > logEntries.size()) {
                 builder.setResult(AppendResult.Result.MISSING_LOGS);
                 int start = logEntries.size();
                 int end = request.getIndex();
                 ArrayList<Integer> missingIdx = new ArrayList<>();
-                for (int i=start+1; i<end; i++) {
+                for (int i=start; i<end; i++) { //TODO:check index again
                     missingIdx.add(i);
                 }
                 builder.addAllMissingLogs(missingIdx);
+            }  else if (request.getIndex() == logEntries.size()-1) {
+                builder.setResult(AppendResult.Result.OK);
             } else {
                 builder.setResult(AppendResult.Result.OK);
                 logEntries.add(request);
             }
+
 
             AppendResult response = builder.build();
             responseObserver.onNext(response);
