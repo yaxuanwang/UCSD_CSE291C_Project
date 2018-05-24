@@ -86,7 +86,11 @@ public final class Client {
         ArrayList<Block> blockList = new ArrayList<>();
         int PART_SIZE = 4 * 1024;
         byte[] buffer = new byte[PART_SIZE];
+
         File f = new File(fileName);
+        if (!f.isFile()) {
+            System.out.println("NOT FOUND");
+        }
 
         try (FileInputStream fis = new FileInputStream(f);
              BufferedInputStream bis = new BufferedInputStream(fis)) {
@@ -140,7 +144,6 @@ public final class Client {
                 }
             }
         }
-
         return ret;
     }
 
@@ -172,8 +175,16 @@ public final class Client {
         }
 	}
 
+
     private void upload (String filename) {
-        int version = getVersion(filename);
+        FileInfo fileInfo = FileInfo.newBuilder().setFilename(filename).build();
+        FileInfo ret = metadataStub.readFile(fileInfo);
+        int version = ret.getVersion();
+        ArrayList<String> list = new ArrayList<>(ret.getBlocklistList());
+        if (version==0 || list.size()==0 || list.get(0)=="0") {
+            logger.info("File" + filename + " not found");
+//            System.out.println("NOT FOUND");
+        }
 
         ArrayList<Block> blocks = fileToBlocks(filename);
         Map<String, Block> tmpMap = new HashMap<>();
@@ -203,6 +214,7 @@ public final class Client {
             upload(filename);
         } else if (result.getResult() == WriteResult.Result.OK) {
             logger.info("Successfully uploaded file: " + filename);
+            System.out.println("OK");
         }
 
     }
@@ -210,7 +222,14 @@ public final class Client {
     private void download (String filename, String downloadPath) {
         FileInfo readRequest = FileInfo.newBuilder().setFilename(filename).build();
         FileInfo readResult = metadataStub.readFile(readRequest);
+
         ArrayList<String> blockHash = new ArrayList<>(readResult.getBlocklistList());
+        int version = readResult.getVersion();
+        if (version==0 || blockHash.size()==0 || blockHash.get(0)=="0") {
+            logger.info("File" + filename + " not found");
+            System.out.println("NOT FOUND");
+        }
+
         //TODO: what if there are some missing blocks
         ArrayList<Block> blocks = new ArrayList<>();
         for (String h: blockHash) {
@@ -225,13 +244,20 @@ public final class Client {
         }
         writeBlocksToFile(blocks, downloadPath+ "/" + filename);
         logger.info("Successfully downloaded file: " + filename);
+        System.out.println("OK");
     }
 
+
     private void delete (String filename) {
-        int version = getVersion(filename);
-        if (version == 0) {
-            throw new RuntimeException("Cannot delete non-existing file: " + filename);
+        FileInfo fileInfo = FileInfo.newBuilder().setFilename(filename).build();
+        FileInfo ret = metadataStub.readFile(fileInfo);
+        int version = ret.getVersion();
+        ArrayList<String> list = new ArrayList<>(ret.getBlocklistList());
+        if (version==0 || list.size()==0 && list.get(0)=="0") {
+            logger.info("File" + filename + " not found");
+//            System.out.println("NOT FOUND");
         }
+
         FileInfo.Builder builder  = FileInfo.newBuilder();
         builder.setFilename(filename);
         builder.setVersion(version+1);
@@ -247,11 +273,23 @@ public final class Client {
 
     }
 
-    private int getVersion(String filename) {
+    private void getVersion(String filename) {
         FileInfo fileInfo = FileInfo.newBuilder().setFilename(filename).build();
-        int version = metadataStub.readFile(fileInfo).getVersion();
-        logger.info("Current version of file " + filename + " is " + version);
-        return version;
+        FileInfo result = metadataStub.getVersion(fileInfo);
+        ArrayList<Integer> versionList = new ArrayList<>(result.getVersionlistList());
+
+        for (int i=0; i<versionList.size(); i++) {
+            int version = versionList.get(i);
+            if (version==0) {
+                logger.info("File" + filename + " not found");
+                System.out.println("NOT FOUND");
+            } else {
+                logger.info("Current version of file " + filename + " is " + version);
+                System.out.println(version);
+            }
+            if(i != versionList.size()-1)
+                System.out.println(" ");
+        }
     }
 
 	/*

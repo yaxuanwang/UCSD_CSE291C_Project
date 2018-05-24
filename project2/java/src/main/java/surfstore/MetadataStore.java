@@ -126,7 +126,7 @@ public final class MetadataStore {
         private boolean isLeader;
         private BlockStoreGrpc.BlockStoreBlockingStub blockStub;
         private ArrayList<MetadataStoreGrpc.MetadataStoreBlockingStub> metadataStubs;
-        private ArrayList<Log> logEntries;
+        private ArrayList<Log> logEntries;  //index start from 0
         private int clusterNum;
 
 
@@ -169,6 +169,7 @@ public final class MetadataStore {
             responseObserver.onCompleted();
         }
 
+
         // TODO: Implement the other RPCs!
         @Override
         public void readFile(surfstore.SurfStoreBasic.FileInfo request,
@@ -203,6 +204,7 @@ public final class MetadataStore {
             responseObserver.onCompleted();
         }
 
+
         private synchronized boolean syncLogs() {
             int vote = 1;
             if (logEntries.size()==0) return true;
@@ -234,6 +236,9 @@ public final class MetadataStore {
 
 
         private synchronized void twoPhaseCommit(Log latestLog) {
+            latestLog = latestLog.toBuilder().setIsCommited(true).build();
+            logEntries.set(logEntries.size()-1, latestLog);
+            // TODO: CHECK WHETHER THEY ARE THE SAME
             for(int i=0; i<metadataStubs.size(); i++) {
                 Empty crash = Empty.newBuilder().build();
                 if (!metadataStubs.get(i).isCrashed(crash).getAnswer()) {
@@ -279,7 +284,7 @@ public final class MetadataStore {
                     builder.setCurrentVersion(version);
                 } else {
                     // successfully modify files
-                    writeLog(version, "modifyFile", filename, hashlist);
+                    writeLog(version, filename, hashlist);
                     if (syncLogs()) {  // Actually it will always be true
                         builder.setResult(WriteResult.Result.OK);
                         builder.setCurrentVersion(version);
@@ -303,6 +308,7 @@ public final class MetadataStore {
                 responseObserver.onCompleted();
             }
         }
+
 
         @Override
         public void deleteFile(surfstore.SurfStoreBasic.FileInfo request,
@@ -331,7 +337,7 @@ public final class MetadataStore {
                 ArrayList<String> deleteList = new ArrayList<>();
                 deleteList.add("0");
                 // successfully modify files
-                writeLog(version, "modifyFile", filename, deleteList);
+                writeLog(version, filename, deleteList);
 
                 if (syncLogs()) {
                     builder.setResult(WriteResult.Result.OK);
@@ -356,6 +362,7 @@ public final class MetadataStore {
             }
         }
 
+
         @Override
         public void isLeader(surfstore.SurfStoreBasic.Empty request,
                              io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.SimpleAnswer> responseObserver) {
@@ -366,6 +373,7 @@ public final class MetadataStore {
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         }
+
 
         @Override
         public void crash(surfstore.SurfStoreBasic.Empty request,
@@ -379,6 +387,7 @@ public final class MetadataStore {
             responseObserver.onCompleted();
         }
 
+
         @Override
         public void restore(surfstore.SurfStoreBasic.Empty request,
                             io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.Empty> responseObserver) {
@@ -391,6 +400,7 @@ public final class MetadataStore {
             responseObserver.onCompleted();
         }
 
+
         @Override
         public void isCrashed(surfstore.SurfStoreBasic.Empty request,
                               io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.SimpleAnswer> responseObserver) {
@@ -401,6 +411,7 @@ public final class MetadataStore {
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         }
+
 
         @Override
         public void appendEntries(surfstore.SurfStoreBasic.Log request,
@@ -425,35 +436,75 @@ public final class MetadataStore {
                 logEntries.add(request);
             }
 
-
             AppendResult response = builder.build();
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         }
 
+
         @Override
         public void commit(surfstore.SurfStoreBasic.Log request,
                            io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.Empty> responseObserver) {
-            if(isCrashed) {
-                throw new RuntimeException("Follower is crashed, cannot commit!");
+            if(isCrashed || isLeader) {
+                throw new RuntimeException("Not a follower or follower is crashed, cannot commit!");
             }
-            if(request.getIndex() != logEntries.size()) {
+            int size = logEntries.size();
+            int curIdx = logEntries.get(size-1).getIndex();
+            if(request.getIndex() != curIdx) {
                 throw new RuntimeException("Commit Error!");
             }
-
-            versionMap.put(request.getFilename(), request.getVersion());
-            ArrayList<String> hashlist = new ArrayList<>(request.getHashlistList());
-            blockHashMap.put(request.getFilename(), hashlist);
+            if(logEntries.get(curIdx).getIsCommited() || request.getIsCommited()) {
+                Log commitLog = logEntries.get(curIdx).toBuilder().setIsCommited(true).build();
+                logEntries.set(curIdx, commitLog);
+                versionMap.put(request.getFilename(), request.getVersion());
+                ArrayList<String> hashlist = new ArrayList<>(request.getHashlistList());
+                blockHashMap.put(request.getFilename(), hashlist);
+            }
 
             Empty response = Empty.newBuilder().build();
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         }
 
-        private void writeLog (int version, String operation, String filename, ArrayList<String> hashlist) {
+
+        @Override
+        public void getVersion(surfstore.SurfStoreBasic.FileInfo request,
+                               io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.FileInfo> responseObserver) {
+            FileInfo.Builder builder = FileInfo.newBuilder();
+            String filename = request.getFilename();
+            ArrayList<Integer> versionList = new ArrayList<>();
+            if (isLeader) {
+                if (versionMap.containsKey(filename)) {
+                    versionList.add(versionMap.get(filename));
+                } else {
+                    versionMap.put(filename, 0);
+                    versionList.add(0);
+                }
+                for (int i=0; i<metadataStubs.size(); i++) {
+                    FileInfo info = FileInfo.newBuilder().setFilename(filename).build();
+                    int version = metadataStubs.get(i).getVersion(info).getVersion();
+                    versionList.add(version);
+                }
+                builder.addAllVersionlist(versionList);
+            } else {
+                if (versionMap.containsKey(filename)) {
+                    builder.setVersion(versionMap.get(filename));
+                } else {
+                    versionMap.put(filename, 0);
+                    builder.setVersion(0);
+                }
+            }
+
+            FileInfo response = builder.build();
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+        }
+
+
+        private void writeLog (int version, String filename, ArrayList<String> hashlist) {
             Log.Builder builder = Log.newBuilder();
             builder.setVersion(version);
-            builder.setOperation(operation);
+            builder.setIsCommited(false);
             builder.setFilename(filename);
             builder.addAllHashlist(hashlist);
             builder.setIndex(logEntries.size());

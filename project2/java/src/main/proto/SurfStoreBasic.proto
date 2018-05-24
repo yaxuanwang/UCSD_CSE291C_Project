@@ -108,6 +108,7 @@ message FileInfo {
     string filename = 1;
     int32 version = 2;
     repeated string blocklist = 3;
+    repeated int32 versionlist = 4;
 }
 
 message Block {
@@ -137,7 +138,7 @@ message NodeList {
 
 message Log {
     int32 version = 1;
-    string operation = 2;
+    bool isCommited = 2;
     string filename = 3;
     repeated string hashlist = 4;
     int32 index = 5;
