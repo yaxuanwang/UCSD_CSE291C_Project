@@ -89,7 +89,7 @@ public final class Client {
 
         File f = new File(fileName);
         if (!f.isFile()) {
-            System.out.println("NOT FOUND");
+            System.out.println("Not Found");
         }
 
         try (FileInputStream fis = new FileInputStream(f);
@@ -167,6 +167,9 @@ public final class Client {
             case "delete":
                 delete(c_args.getString("filename"));
                 break;
+            case "getVersion":
+                getVersion(c_args.getString("filename"));
+                break;
             case "getversion":
                 getVersion(c_args.getString("filename"));
                 break;
@@ -181,9 +184,9 @@ public final class Client {
         FileInfo ret = metadataStub.readFile(fileInfo);
         int version = ret.getVersion();
         ArrayList<String> list = new ArrayList<>(ret.getBlocklistList());
-        if (version==0 || list.size()==0 || list.get(0)=="0") {
+        if (version==0 || list.size()==0 || list.get(0).equals("0")) {
             logger.info("File" + filename + " not found");
-//            System.out.println("NOT FOUND");
+//            System.out.println("Not Found");
         }
 
         ArrayList<Block> blocks = fileToBlocks(filename);
@@ -225,9 +228,10 @@ public final class Client {
 
         ArrayList<String> blockHash = new ArrayList<>(readResult.getBlocklistList());
         int version = readResult.getVersion();
-        if (version==0 || blockHash.size()==0 || blockHash.get(0)=="0") {
+        if (version == 0 || blockHash.size()==0 || blockHash.get(0).equals("0")) {
             logger.info("File" + filename + " not found");
-            System.out.println("NOT FOUND");
+            System.out.println("Not Found");
+            return;
         }
 
         //TODO: what if there are some missing blocks
@@ -253,9 +257,10 @@ public final class Client {
         FileInfo ret = metadataStub.readFile(fileInfo);
         int version = ret.getVersion();
         ArrayList<String> list = new ArrayList<>(ret.getBlocklistList());
-        if (version==0 || list.size()==0 && list.get(0)=="0") {
+        if (version==0 || list.size()==0 && list.get(0).equals("0")) {
             logger.info("File" + filename + " not found");
-//            System.out.println("NOT FOUND");
+            System.out.println("Not Found");
+            return;
         }
 
         FileInfo.Builder builder  = FileInfo.newBuilder();
@@ -269,6 +274,7 @@ public final class Client {
             delete(filename);
         } else if (result.getResult() == WriteResult.Result.OK) {
             logger.info("Successfully deleted file: " + filename);
+            System.out.println("OK");
         }
 
     }
@@ -278,18 +284,16 @@ public final class Client {
         FileInfo result = metadataStub.getVersion(fileInfo);
         ArrayList<Integer> versionList = new ArrayList<>(result.getVersionlistList());
 
+        String output = "";
         for (int i=0; i<versionList.size(); i++) {
             int version = versionList.get(i);
-            if (version == 0) {
-                logger.info("File" + filename + " not found");
-                System.out.println("NOT FOUND");
-            } else {
-                logger.info("Current version of file " + filename + " is " + version);
-                System.out.println(version);
-            }
+            logger.info("Current version of file " + filename + " is " + version);
+            output += Integer.toString(version);
+
             if(i != versionList.size()-1)
-                System.out.println(" ");
+                output += " ";
         }
+        System.out.println(output);
     }
 
 	/*
@@ -301,7 +305,7 @@ public final class Client {
         parser.addArgument("config_file").type(String.class)
                 .help("Path to configuration file");
 
-        parser.addArgument("operations").choices("upload", "download", "delete", "getversion")
+        parser.addArgument("operations").choices("upload", "download", "delete", "getversion", "getVersion")
                 .type(String.class)
                 .help("file operations");
 
@@ -325,6 +329,7 @@ public final class Client {
         }
         return res;
     }
+
 
     public static void main(String[] args) throws Exception {
         Namespace c_args = parseArgs(args);

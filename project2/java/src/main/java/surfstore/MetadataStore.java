@@ -335,12 +335,27 @@ public final class MetadataStore {
             String filename = request.getFilename();
             int version = request.getVersion();
 
-            // file has already been deleted
-            if (blockHashMap.containsKey(filename)
-                    && blockHashMap.get(filename).get(0) == "0") {
-                //TODO: what to do?
-                logger.info("Warning: file " + filename + " has been deleted!");
+            // file has already been deleted or does not exist
+            if(!versionMap.containsKey(filename) || versionMap.get(filename)== 0) {
+                logger.info("Warning: file " + filename + "does not exist!");
+                versionMap.put(filename, 0);
+                builder.setResult(WriteResult.Result.OLD_VERSION);
+                builder.setCurrentVersion(versionMap.get(filename));
+
+                WriteResult response = builder.build();
+                responseObserver.onNext(response);
+                return;
             }
+            if (blockHashMap.containsKey(filename) && blockHashMap.get(filename).get(0).equals("0")) {
+                logger.info("Warning: file " + filename + "does not exist!");
+                builder.setResult(WriteResult.Result.OLD_VERSION);
+                builder.setCurrentVersion(versionMap.get(filename));
+
+                WriteResult response = builder.build();
+                responseObserver.onNext(response);
+                return;
+            }
+
             if (versionMap.containsKey(filename) && version == versionMap.get(filename)+1) {
                 ArrayList<String> deleteList = new ArrayList<>();
                 deleteList.add("0");
