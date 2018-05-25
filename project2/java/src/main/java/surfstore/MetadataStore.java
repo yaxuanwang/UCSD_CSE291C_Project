@@ -297,6 +297,14 @@ public final class MetadataStore {
                 WriteResult response = builder.build();
                 responseObserver.onNext(response);
                 responseObserver.onCompleted();
+            } else if (!versionMap.containsKey(filename)) {
+                versionMap.put(filename, 0);
+                builder.setResult(WriteResult.Result.OLD_VERSION);
+                builder.setCurrentVersion(versionMap.get(filename));
+
+                WriteResult response = builder.build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
             }
             //TODO: what if versionMap does not contain file while version!=1?
             else {

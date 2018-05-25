@@ -280,7 +280,7 @@ public final class Client {
 
         for (int i=0; i<versionList.size(); i++) {
             int version = versionList.get(i);
-            if (version==0) {
+            if (version == 0) {
                 logger.info("File" + filename + " not found");
                 System.out.println("NOT FOUND");
             } else {
