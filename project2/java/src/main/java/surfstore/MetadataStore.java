@@ -284,15 +284,18 @@ public final class MetadataStore {
                     builder.setCurrentVersion(version);
                 } else {
                     // successfully modify files
-                    writeLog(version, filename, hashlist);
-                    if (syncLogs()) {  // Actually it will always be true
+                    if(blockHashMap.containsKey(filename) && equalHashList(blockHashMap.get(filename), hashlist)) {
                         builder.setResult(WriteResult.Result.OK);
-                        builder.setCurrentVersion(version);
-                        versionMap.put(filename, version);
-                        blockHashMap.put(filename, hashlist);
-                        twoPhaseCommit(logEntries.get(logEntries.size()-1));
+                    } else {
+                        writeLog(version, filename, hashlist);
+                        if (syncLogs()) {  // Actually it will always be true
+                            builder.setResult(WriteResult.Result.OK);
+                            builder.setCurrentVersion(version);
+                            versionMap.put(filename, version);
+                            blockHashMap.put(filename, hashlist);
+                            twoPhaseCommit(logEntries.get(logEntries.size()-1));
+                        }
                     }
-
                 }
                 WriteResult response = builder.build();
                 responseObserver.onNext(response);
@@ -317,6 +320,21 @@ public final class MetadataStore {
             }
         }
 
+        private boolean equalHashList(ArrayList<String> list1, ArrayList<String> list2) {
+            if(list1==null && list2==null)
+                return true;
+            if((list1 == null && list2 != null) || (list1 != null && list2 == null))
+                return false;
+
+            if(list1.size()!=list2.size())
+                return false;
+            for(String itemList1: list1)
+            {
+                if(!list2.contains(itemList1))
+                    return false;
+            }
+            return true;
+        }
 
         @Override
         public void deleteFile(surfstore.SurfStoreBasic.FileInfo request,
@@ -496,9 +514,12 @@ public final class MetadataStore {
             FileInfo.Builder builder = FileInfo.newBuilder();
             String filename = request.getFilename();
             ArrayList<Integer> versionList = new ArrayList<>();
+            builder.setFilename(filename);
+
             if (isLeader) {
                 if (versionMap.containsKey(filename)) {
-                    versionList.add(versionMap.get(filename));
+                    int version = versionMap.get(filename);
+                    versionList.add(version);
                 } else {
                     versionMap.put(filename, 0);
                     versionList.add(0);
@@ -511,7 +532,8 @@ public final class MetadataStore {
                 builder.addAllVersionlist(versionList);
             } else {
                 if (versionMap.containsKey(filename)) {
-                    builder.setVersion(versionMap.get(filename));
+                    int version = versionMap.get(filename);
+                    builder.setVersion(version);
                 } else {
                     versionMap.put(filename, 0);
                     builder.setVersion(0);
@@ -522,6 +544,26 @@ public final class MetadataStore {
             responseObserver.onNext(response);
             responseObserver.onCompleted();
         }
+
+
+//        @Override
+//        public void getVersion(surfstore.SurfStoreBasic.FileInfo request,
+//                               io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.FileInfo> responseObserver) {
+//            FileInfo.Builder builder = FileInfo.newBuilder();
+//            String filename = request.getFilename();
+//            ArrayList<Integer> versionList = new ArrayList<>();
+//            builder.setFilename(filename);
+//            if (versionMap.containsKey(filename)) {
+//                builder.setVersion(versionMap.get(filename));
+//            } else {
+//                versionMap.put(filename, 0);
+//                builder.setVersion(versionMap.get(filename));
+//            }
+//
+//            FileInfo response = builder.build();
+//            responseObserver.onNext(response);
+//            responseObserver.onCompleted();
+//        }
 
 
         private void writeLog (int version, String filename, ArrayList<String> hashlist) {

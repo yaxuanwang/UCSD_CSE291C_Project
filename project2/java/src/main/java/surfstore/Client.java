@@ -257,7 +257,7 @@ public final class Client {
         FileInfo ret = metadataStub.readFile(fileInfo);
         int version = ret.getVersion();
         ArrayList<String> list = new ArrayList<>(ret.getBlocklistList());
-        if (version==0 || list.size()==0 && list.get(0).equals("0")) {
+        if (version==0 || list.size()==0 || list.get(0).equals("0")) {
             logger.info("File" + filename + " not found");
             System.out.println("Not Found");
             return;
