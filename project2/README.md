@@ -1,6 +1,3 @@
-Project 2 starter code
-Copyright (C) George Porter, 2017, 2018.
-
 ## Overview
 
 This is the starter code for the Java implementation of SurfStore.
