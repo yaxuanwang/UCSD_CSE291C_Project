@@ -147,10 +147,10 @@ public final class MetadataStore {
                     public void run() {
                         try {
                             while (true) {
-                                System.out.println("Does it work?");
+//                                System.out.println("Does it work?");
                                 syncLogs();
                                 Thread.sleep(500);
-                                System.out.println("Nope, it doesnt...again.");
+//                                System.out.println("Nope, it doesnt...again.");
                             }
                         } catch (InterruptedException v) {
                             System.out.println(v);
@@ -516,27 +516,37 @@ public final class MetadataStore {
             ArrayList<Integer> versionList = new ArrayList<>();
             builder.setFilename(filename);
 
-            if (isLeader) {
-                if (versionMap.containsKey(filename)) {
-                    int version = versionMap.get(filename);
-                    versionList.add(version);
-                } else {
+            if(clusterNum == 1) {
+                if (!versionMap.containsKey(filename)) {
                     versionMap.put(filename, 0);
-                    versionList.add(0);
                 }
-                for (int i=0; i<metadataStubs.size(); i++) {
-                    FileInfo info = FileInfo.newBuilder().setFilename(filename).build();
-                    int version = metadataStubs.get(i).getVersion(info).getVersion();
-                    versionList.add(version);
-                }
-                builder.addAllVersionlist(versionList);
+                int version = versionMap.get(filename);
+                builder.setVersion(version);
             } else {
-                if (versionMap.containsKey(filename)) {
-                    int version = versionMap.get(filename);
-                    builder.setVersion(version);
+                if (isLeader) {
+                    if (versionMap.containsKey(filename)) {
+                        int version = versionMap.get(filename);
+                        versionList.add(version);
+                        builder.setVersion(version);
+                    } else {
+                        versionMap.put(filename, 0);
+                        versionList.add(0);
+                        builder.setVersion(0);
+                    }
+                    for (int i = 0; i < metadataStubs.size(); i++) {
+                        FileInfo info = FileInfo.newBuilder().setFilename(filename).build();
+                        int version = metadataStubs.get(i).getVersion(info).getVersion();
+                        versionList.add(version);
+                    }
+                    builder.addAllVersionlist(versionList);
                 } else {
-                    versionMap.put(filename, 0);
-                    builder.setVersion(0);
+                    if (versionMap.containsKey(filename)) {
+                        int version = versionMap.get(filename);
+                        builder.setVersion(version);
+                    } else {
+                        versionMap.put(filename, 0);
+                        builder.setVersion(0);
+                    }
                 }
             }
 

@@ -36,6 +36,10 @@ public final class Client {
 
     private final ConfigReader config;
 
+    private Map<Integer, MetadataStoreGrpc.MetadataStoreBlockingStub> metadataStubs = new HashMap<>();
+
+    private static int  clusterNum = 1;
+
     public Client(ConfigReader config) {
         this.metadataChannel = ManagedChannelBuilder.forAddress("127.0.0.1", config.getMetadataPort(config.getLeaderNum()))
                 .usePlaintext(true).build();
@@ -46,6 +50,14 @@ public final class Client {
         this.blockStub = BlockStoreGrpc.newBlockingStub(blockChannel);
 
         this.config = config;
+
+        for (int i=1; i<=config.getNumMetadataServers(); i++) {
+                ManagedChannel metadataChannel = ManagedChannelBuilder
+                        .forAddress("127.0.0.1", config.getMetadataPort(i)).usePlaintext(true).build();
+                MetadataStoreGrpc.MetadataStoreBlockingStub metadataStub
+                        = MetadataStoreGrpc.newBlockingStub(metadataChannel);
+                this.metadataStubs.put(i, metadataStub);
+        }
     }
 
     public void shutdown() throws InterruptedException {
@@ -137,7 +149,7 @@ public final class Client {
 
         for (File file : listOfFiles) {
             if (file.isFile()) {
-                System.out.println(file.getName());
+//                System.out.println(file.getName());
                 ArrayList<Block> blockList = fileToBlocks(path + file.getName());
                 for (Block b: blockList) {
                     ret.put(b.getHash(), b);
@@ -173,12 +185,53 @@ public final class Client {
             case "getversion":
                 getVersion(c_args.getString("filename"));
                 break;
+            case "crash":
+                crash(c_args.getString("filename"));
+                break;
+            case "restore":
+                restore(c_args.getString("filename"));
+                break;
+            case "isCrash":
+                isCrash(c_args.getString("filename"));
+                break;
             default:
                 throw new RuntimeException("Invalid operation: " + operation);
         }
 	}
 
+    private void crash(String idx) {
+        Integer index = Integer.valueOf(idx);
+        Empty info = Empty.newBuilder().build();
+        if (metadataStubs.containsKey(index)) {
+            metadataStubs.get(index).crash(info);
+        } else {
+            throw new RuntimeException("no server with number " + idx);
+        }
+        logger.info("Successfully crashed metadataSore: " + idx);
+    }
 
+
+    private void restore(String idx) {
+        Integer index = Integer.valueOf(idx);
+        Empty info = Empty.newBuilder().build();
+        if (metadataStubs.containsKey(index)) {
+            metadataStubs.get(index).restore(info);
+        } else {
+            throw new RuntimeException("no server with number " + idx);
+        }
+        logger.info("Successfully restored metadataSore: " + idx);
+    }
+
+    private void isCrash(String idx) {
+        Integer index = Integer.valueOf(idx);
+        Empty info = Empty.newBuilder().build();
+        if (metadataStubs.containsKey(index)) {
+            SurfStoreBasic.SimpleAnswer result = metadataStubs.get(index).isCrashed(info);
+            logger.info("Status of MSD " + idx + " is " + result.getAnswer());
+        } else {
+            throw new RuntimeException("no server with number " + idx);
+        }
+    }
     private void upload (String filename) {
         FileInfo fileInfo = FileInfo.newBuilder().setFilename(filename).build();
         FileInfo ret = metadataStub.readFile(fileInfo);
@@ -282,18 +335,22 @@ public final class Client {
     private void getVersion(String filename) {
         FileInfo fileInfo = FileInfo.newBuilder().setFilename(filename).build();
         FileInfo result = metadataStub.getVersion(fileInfo);
-        ArrayList<Integer> versionList = new ArrayList<>(result.getVersionlistList());
 
-        String output = "";
-        for (int i=0; i<versionList.size(); i++) {
-            int version = versionList.get(i);
-            logger.info("Current version of file " + filename + " is " + version);
-            output += Integer.toString(version);
+        if (clusterNum == 1) {
+            System.out.println(result.getVersion());
+        } else {
+            String output = "";
+            ArrayList<Integer> versionList = new ArrayList<>(result.getVersionlistList());
+            for (int i = 0; i < versionList.size(); i++) {
+                int version = versionList.get(i);
+                logger.info("Current version of file " + filename + " is " + version);
+                output += Integer.toString(version);
 
-            if(i != versionList.size()-1)
-                output += " ";
+                if (i != versionList.size() - 1)
+                    output += " ";
+            }
+            System.out.println(output);
         }
-        System.out.println(output);
     }
 
 	/*
@@ -305,7 +362,7 @@ public final class Client {
         parser.addArgument("config_file").type(String.class)
                 .help("Path to configuration file");
 
-        parser.addArgument("operations").choices("upload", "download", "delete", "getversion", "getVersion")
+        parser.addArgument("operations").choices("upload", "download", "delete", "getversion", "getVersion","crash", "restore", "isCrash")
                 .type(String.class)
                 .help("file operations");
 
@@ -336,12 +393,13 @@ public final class Client {
         if (c_args == null){
             throw new RuntimeException("Argument parsing failed");
         }
-        System.out.println(c_args);
+//        System.out.println(c_args);
 
         File configf = new File(c_args.getString("config_file"));
         ConfigReader config = new ConfigReader(configf);
 
         Client client = new Client(config);
+        clusterNum = config.getNumMetadataServers();
 
         try {
         	client.go(args);
