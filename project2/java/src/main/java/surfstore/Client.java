@@ -334,20 +334,27 @@ public final class Client {
 
     private void getVersion(String filename) {
         FileInfo fileInfo = FileInfo.newBuilder().setFilename(filename).build();
-        FileInfo result = metadataStub.getVersion(fileInfo);
-
         if (clusterNum == 1) {
+            FileInfo result = metadataStub.getVersion(fileInfo);
             System.out.println(result.getVersion());
         } else {
             String output = "";
-            ArrayList<Integer> versionList = new ArrayList<>(result.getVersionlistList());
-            for (int i = 0; i < versionList.size(); i++) {
-                int version = versionList.get(i);
-                logger.info("Current version of file " + filename + " is " + version);
-                output += Integer.toString(version);
+//            ArrayList<Integer> versionList = new ArrayList<>(result.getVersionlistList());
+//            for (int i = 0; i < versionList.size(); i++) {
+//                int version = versionList.get(i);
+//                logger.info("Current version of file " + filename + " is " + version);
+//                output += Integer.toString(version);
+//
+//                if (i != versionList.size() - 1)
+//                    output += " ";
+//            }
+            for(int i=1; i<= metadataStubs.size(); i++) {
+                FileInfo result = metadataStubs.get(i).getVersion(fileInfo);
+                output += result.getVersion();
 
-                if (i != versionList.size() - 1)
+                if (i != metadataStubs.size()) {
                     output += " ";
+                }
             }
             System.out.println(output);
         }
