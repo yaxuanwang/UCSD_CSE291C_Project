@@ -176,7 +176,20 @@ public final class MetadataStore {
                              io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.FileInfo> responseObserver) {
             //TODO: what to return if not leader??
             if (!isLeader) {
-                throw new RuntimeException("Calling non-leader server!");
+//                throw new RuntimeException("Calling non-leader server!");
+                FileInfo.Builder builder = FileInfo.newBuilder();
+                String filename = request.getFilename();
+                if(!versionMap.containsKey(filename)) {
+                    versionMap.put(filename, 0);
+                }
+                int version = versionMap.get(filename);
+                builder.setFilename(filename);
+                builder.setVersion(version);
+
+                FileInfo response = builder.build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+                return;
             }
             logger.info("Reading file: " + request.getFilename());
 
