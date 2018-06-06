@@ -147,6 +147,7 @@ message AppendResult {
     enum Result {
         OK = 0;
         MISSING_LOGS = 1;
+        IS_CRASHED = 2;
     }
     Result result = 1;
     repeated int32 missing_logs = 2;

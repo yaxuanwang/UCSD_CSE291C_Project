@@ -222,31 +222,31 @@ public final class MetadataStore {
             int vote = 1;
             if (logEntries.size()==0) return true;
             for (int i=0; i<metadataStubs.size(); i++) {
-                Empty crash = Empty.newBuilder().build();
-                if (!metadataStubs.get(i).isCrashed(crash).getAnswer()) {
-                    int goal = logEntries.size()-1;
-                    AppendResult result = metadataStubs.get(i).appendEntries(logEntries.get(goal));
-                    if (result.getResult() == AppendResult.Result.OK) {
-                        vote++;
-                    } else if (result.getResult() == AppendResult.Result.MISSING_LOGS) {
-                        //TODO: resend missing logs to sync
-                        ArrayList<Integer> missingLogs = new ArrayList<>(result.getMissingLogsList());
-                        for (Integer idx: missingLogs) {
-                            metadataStubs.get(i).appendEntries(logEntries.get(idx));
-                            metadataStubs.get(i).commit(logEntries.get(idx));
-                            AppendResult check = metadataStubs.get(i).appendEntries(logEntries.get(goal));
+//                Empty crash = Empty.newBuilder().build();
+//                if (!metadataStubs.get(i).isCrashed(crash).getAnswer()) {
+                int goal = logEntries.size()-1;
+                AppendResult result = metadataStubs.get(i).appendEntries(logEntries.get(goal));
+                if (result.getResult() == AppendResult.Result.OK) {
+                    vote++;
+                } else if (result.getResult() == AppendResult.Result.MISSING_LOGS) {
+                    //TODO: resend missing logs to sync
+                    ArrayList<Integer> missingLogs = new ArrayList<>(result.getMissingLogsList());
+                    for (Integer idx: missingLogs) {
+                        metadataStubs.get(i).appendEntries(logEntries.get(idx));
+                        metadataStubs.get(i).commit(logEntries.get(idx));
+                        AppendResult check = metadataStubs.get(i).appendEntries(logEntries.get(goal));
 
-                            // TODO: WHAT TO DO IF HAS BEEN SYNC
-                            if (check.getResult() == AppendResult.Result.OK) {
-                                vote++;
-                                if(logEntries.get(goal).getIsCommited()) {
-                                    metadataStubs.get(i).commit(logEntries.get(goal));
-                                }
-                                break;
+                        // TODO: WHAT TO DO IF HAS BEEN SYNC
+                        if (check.getResult() == AppendResult.Result.OK) {
+                            vote++;
+                            if(logEntries.get(goal).getIsCommited()) {
+                                metadataStubs.get(i).commit(logEntries.get(goal));
                             }
+                            break;
                         }
                     }
                 }
+//                }
             }
             return vote >= (clusterNum/2+1);
         }
@@ -257,10 +257,7 @@ public final class MetadataStore {
             logEntries.set(logEntries.size()-1, latestLog);
             // TODO: CHECK WHETHER THEY ARE THE SAME
             for(int i=0; i<metadataStubs.size(); i++) {
-                Empty crash = Empty.newBuilder().build();
-                if (!metadataStubs.get(i).isCrashed(crash).getAnswer()) {
-                    metadataStubs.get(i).commit(latestLog);
-                }
+                metadataStubs.get(i).commit(latestLog);
             }
         }
 
@@ -474,16 +471,21 @@ public final class MetadataStore {
         @Override
         public void appendEntries(surfstore.SurfStoreBasic.Log request,
                                   io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.AppendResult> responseObserver) {
-            if(isCrashed) {
-                throw new RuntimeException("Follower is crashed, cannot append!");
-            }
             AppendResult.Builder builder = AppendResult.newBuilder();
+            if(isCrashed) {
+//                throw new RuntimeException("Follower is crashed, cannot append!");
+                builder.setResult(AppendResult.Result.IS_CRASHED);
+                AppendResult response = builder.build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+                return;
+            }
             if(request.getIndex() > logEntries.size()) {
                 builder.setResult(AppendResult.Result.MISSING_LOGS);
                 int start = logEntries.size();
                 int end = request.getIndex();
                 ArrayList<Integer> missingIdx = new ArrayList<>();
-                for (int i=start; i<end; i++) { //TODO:check index again
+                for (int i=start; i<end; i++) { //check index again
                     missingIdx.add(i);
                 }
                 builder.addAllMissingLogs(missingIdx);
@@ -503,8 +505,14 @@ public final class MetadataStore {
         @Override
         public void commit(surfstore.SurfStoreBasic.Log request,
                            io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.Empty> responseObserver) {
-            if(isCrashed || isLeader) {
+            if(isLeader) {
                 throw new RuntimeException("Not a follower or follower is crashed, cannot commit!");
+            }
+            if(isCrashed) {
+                Empty response = Empty.newBuilder().build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+                return;
             }
             int size = logEntries.size();
             int curIdx = logEntries.get(size-1).getIndex();
