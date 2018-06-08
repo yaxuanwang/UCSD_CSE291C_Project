@@ -233,12 +233,15 @@ public final class Client {
         }
     }
     private void upload (String filename) {
-        FileInfo fileInfo = FileInfo.newBuilder().setFilename(filename).build();
+	String trimed_fName = filename.trim();  
+    	trimed_fName = trimed_fName.substring(trimed_fName.lastIndexOf("/")+1);  
+
+        FileInfo fileInfo = FileInfo.newBuilder().setFilename(trimed_fName).build();
         FileInfo ret = metadataStub.readFile(fileInfo);
         int version = ret.getVersion();
         ArrayList<String> list = new ArrayList<>(ret.getBlocklistList());
         if (version==0 || list.size()==0 || list.get(0).equals("0")) {
-            logger.info("File" + filename + " not found");
+            logger.info("File" + trimed_fName + " not found");
 //            System.out.println("Not Found");
         }
 
@@ -249,7 +252,7 @@ public final class Client {
         }
         FileInfo.Builder builder = FileInfo.newBuilder();
 
-        builder.setFilename(filename);
+        builder.setFilename(trimed_fName);
         builder.setVersion(version+1);
         ArrayList<String> hashlist = new ArrayList<>();
         for (int i=0; i<blocks.size(); i++) {
@@ -269,20 +272,23 @@ public final class Client {
         if (result.getResult() == WriteResult.Result.OLD_VERSION) {
             upload(filename);
         } else if (result.getResult() == WriteResult.Result.OK) {
-            logger.info("Successfully uploaded file: " + filename);
+            logger.info("Successfully uploaded file: " + trimed_fName);
             System.out.println("OK");
         }
 
     }
 
     private void download (String filename, String downloadPath) {
-        FileInfo readRequest = FileInfo.newBuilder().setFilename(filename).build();
+	String trimed_fName = filename.trim();  
+    	trimed_fName = trimed_fName.substring(trimed_fName.lastIndexOf("/")+1); 
+
+        FileInfo readRequest = FileInfo.newBuilder().setFilename(trimed_fName).build();
         FileInfo readResult = metadataStub.readFile(readRequest);
 
         ArrayList<String> blockHash = new ArrayList<>(readResult.getBlocklistList());
         int version = readResult.getVersion();
         if (version == 0 || blockHash.size()==0 || blockHash.get(0).equals("0")) {
-            logger.info("File" + filename + " not found");
+            logger.info("File" + trimed_fName + " not found");
             System.out.println("Not Found");
             return;
         }
@@ -299,25 +305,28 @@ public final class Client {
                 blocks.add(b);
             }
         }
-        writeBlocksToFile(blocks, downloadPath+ "/" + filename);
-        logger.info("Successfully downloaded file: " + filename);
+        writeBlocksToFile(blocks, downloadPath+ "/" + trimed_fName);
+        logger.info("Successfully downloaded file: " + trimed_fName);
         System.out.println("OK");
     }
 
 
     private void delete (String filename) {
-        FileInfo fileInfo = FileInfo.newBuilder().setFilename(filename).build();
+	String trimed_fName = filename.trim();  
+    	trimed_fName = trimed_fName.substring(trimed_fName.lastIndexOf("/")+1); 
+
+        FileInfo fileInfo = FileInfo.newBuilder().setFilename(trimed_fName).build();
         FileInfo ret = metadataStub.readFile(fileInfo);
         int version = ret.getVersion();
         ArrayList<String> list = new ArrayList<>(ret.getBlocklistList());
         if (version==0 || list.size()==0 || list.get(0).equals("0")) {
-            logger.info("File" + filename + " not found");
+            logger.info("File" + trimed_fName + " not found");
             System.out.println("Not Found");
             return;
         }
 
         FileInfo.Builder builder  = FileInfo.newBuilder();
-        builder.setFilename(filename);
+        builder.setFilename(trimed_fName);
         builder.setVersion(version+1);
 
         FileInfo deleteRequest = builder.build();
@@ -326,14 +335,17 @@ public final class Client {
         if (result.getResult() == WriteResult.Result.OLD_VERSION) {
             delete(filename);
         } else if (result.getResult() == WriteResult.Result.OK) {
-            logger.info("Successfully deleted file: " + filename);
+            logger.info("Successfully deleted file: " + trimed_fName);
             System.out.println("OK");
         }
 
     }
 
     private void getVersion(String filename) {
-        FileInfo fileInfo = FileInfo.newBuilder().setFilename(filename).build();
+	String trimed_fName = filename.trim();  
+    	trimed_fName = trimed_fName.substring(trimed_fName.lastIndexOf("/")+1); 
+
+        FileInfo fileInfo = FileInfo.newBuilder().setFilename(trimed_fName).build();
         if (clusterNum == 1) {
             FileInfo result = metadataStub.getVersion(fileInfo);
             System.out.println(result.getVersion());
@@ -342,7 +354,7 @@ public final class Client {
 //            ArrayList<Integer> versionList = new ArrayList<>(result.getVersionlistList());
 //            for (int i = 0; i < versionList.size(); i++) {
 //                int version = versionList.get(i);
-//                logger.info("Current version of file " + filename + " is " + version);
+//                logger.info("Current version of file " + trimed_fName + " is " + version);
 //                output += Integer.toString(version);
 //
 //                if (i != versionList.size() - 1)
