@@ -147,10 +147,8 @@ public final class MetadataStore {
                     public void run() {
                         try {
                             while (true) {
-//                                System.out.println("Does it work?");
                                 syncLogs();
                                 Thread.sleep(500);
-//                                System.out.println("Nope, it doesnt...again.");
                             }
                         } catch (InterruptedException v) {
                             System.out.println(v);
@@ -222,8 +220,6 @@ public final class MetadataStore {
             int vote = 1;
             if (logEntries.size()==0) return true;
             for (int i=0; i<metadataStubs.size(); i++) {
-//                Empty crash = Empty.newBuilder().build();
-//                if (!metadataStubs.get(i).isCrashed(crash).getAnswer()) {
                 int goal = logEntries.size()-1;
                 AppendResult result = metadataStubs.get(i).appendEntries(logEntries.get(goal));
                 if (result.getResult() == AppendResult.Result.OK) {
@@ -246,7 +242,6 @@ public final class MetadataStore {
                         }
                     }
                 }
-//                }
             }
             return vote >= (clusterNum/2+1);
         }
@@ -297,12 +292,12 @@ public final class MetadataStore {
                     builder.setResult(WriteResult.Result.MISSING_BLOCKS);
                     builder.setCurrentVersion(version);
                 } else {
-                    // successfully modify files
+                    // successfully modify files, two phase commit
                     if(blockHashMap.containsKey(filename) && equalHashList(blockHashMap.get(filename), hashlist)) {
                         builder.setResult(WriteResult.Result.OK);
                     } else {
                         writeLog(version, filename, hashlist);
-                        if (syncLogs()) {  // Actually it will always be true
+                        if (syncLogs()) {
                             builder.setResult(WriteResult.Result.OK);
                             builder.setCurrentVersion(version);
                             versionMap.put(filename, version);
@@ -391,7 +386,7 @@ public final class MetadataStore {
             if (versionMap.containsKey(filename) && version == versionMap.get(filename)+1) {
                 ArrayList<String> deleteList = new ArrayList<>();
                 deleteList.add("0");
-                // successfully modify files
+                // successfully modify files, two phase commit
                 writeLog(version, filename, deleteList);
 
                 if (syncLogs()) {
@@ -406,7 +401,6 @@ public final class MetadataStore {
                 responseObserver.onNext(response);
                 responseObserver.onCompleted();
             }
-            //TODO: what if versionMap does not contain file while version!=1?
             else if (versionMap.containsKey(filename) && version != versionMap.get(filename)+1){
                 builder.setResult(WriteResult.Result.OLD_VERSION);
                 builder.setCurrentVersion(versionMap.get(filename));

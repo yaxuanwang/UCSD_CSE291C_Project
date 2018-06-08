@@ -233,7 +233,7 @@ public final class Client {
         }
     }
     private void upload (String filename) {
-	String trimed_fName = filename.trim();  
+	    String trimed_fName = filename.trim();
     	trimed_fName = trimed_fName.substring(trimed_fName.lastIndexOf("/")+1);  
 
         FileInfo fileInfo = FileInfo.newBuilder().setFilename(trimed_fName).build();
