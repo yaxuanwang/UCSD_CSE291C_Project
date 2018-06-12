@@ -222,13 +222,9 @@ public final class MetadataStore {
                             metadataStubs.get(i).appendEntries(logEntries.get(idx));
                             metadataStubs.get(i).commit(logEntries.get(idx));
                             AppendResult check = metadataStubs.get(i).appendEntries(logEntries.get(goal));
-
                             // TODO: WHAT TO DO IF HAS BEEN SYNC
                             if (check.getResult() == AppendResult.Result.OK) {
                                 vote++;
-                                if(logEntries.get(goal).getIsCommited()) {
-                                    metadataStubs.get(i).commit(logEntries.get(goal));
-                                }
                                 break;
                             }
                         }
@@ -520,39 +516,39 @@ public final class MetadataStore {
             ArrayList<Integer> versionList = new ArrayList<>();
             builder.setFilename(filename);
 
-//            if(clusterNum == 1) {
+            if(clusterNum == 1) {
                 if (!versionMap.containsKey(filename)) {
                     versionMap.put(filename, 0);
                 }
                 int version = versionMap.get(filename);
                 builder.setVersion(version);
-//            } else {
-//                if (isLeader) {
-//                    if (versionMap.containsKey(filename)) {
-//                        int version = versionMap.get(filename);
-//                        versionList.add(version);
-//                        builder.setVersion(version);
-//                    } else {
-//                        versionMap.put(filename, 0);
-//                        versionList.add(0);
-//                        builder.setVersion(0);
-//                    }
-//                    for (int i = 0; i < metadataStubs.size(); i++) {
-//                        FileInfo info = FileInfo.newBuilder().setFilename(filename).build();
-//                        int version = metadataStubs.get(i).getVersion(info).getVersion();
-//                        versionList.add(version);
-//                    }
-//                    builder.addAllVersionlist(versionList);
-//                } else {
-//                    if (versionMap.containsKey(filename)) {
-//                        int version = versionMap.get(filename);
-//                        builder.setVersion(version);
-//                    } else {
-//                        versionMap.put(filename, 0);
-//                        builder.setVersion(0);
-//                    }
-//                }
-//            }
+            } else {
+                if (isLeader) {
+                    if (versionMap.containsKey(filename)) {
+                        int version = versionMap.get(filename);
+                        versionList.add(version);
+                        builder.setVersion(version);
+                    } else {
+                        versionMap.put(filename, 0);
+                        versionList.add(0);
+                        builder.setVersion(0);
+                    }
+                    for (int i = 0; i < metadataStubs.size(); i++) {
+                        FileInfo info = FileInfo.newBuilder().setFilename(filename).build();
+                        int version = metadataStubs.get(i).getVersion(info).getVersion();
+                        versionList.add(version);
+                    }
+                    builder.addAllVersionlist(versionList);
+                } else {
+                    if (versionMap.containsKey(filename)) {
+                        int version = versionMap.get(filename);
+                        builder.setVersion(version);
+                    } else {
+                        versionMap.put(filename, 0);
+                        builder.setVersion(0);
+                    }
+                }
+            }
 
             FileInfo response = builder.build();
             responseObserver.onNext(response);
