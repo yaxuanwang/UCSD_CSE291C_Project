@@ -147,10 +147,8 @@ public final class MetadataStore {
                     public void run() {
                         try {
                             while (true) {
-//                                System.out.println("Does it work?");
                                 syncLogs();
                                 Thread.sleep(500);
-//                                System.out.println("Nope, it doesnt...again.");
                             }
                         } catch (InterruptedException v) {
                             System.out.println(v);
@@ -176,7 +174,20 @@ public final class MetadataStore {
                              io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.FileInfo> responseObserver) {
             //TODO: what to return if not leader??
             if (!isLeader) {
-                throw new RuntimeException("Calling non-leader server!");
+//                throw new RuntimeException("Calling non-leader server!");
+                FileInfo.Builder builder = FileInfo.newBuilder();
+                String filename = request.getFilename();
+                if(!versionMap.containsKey(filename)) {
+                    versionMap.put(filename, 0);
+                }
+                int version = versionMap.get(filename);
+                builder.setFilename(filename);
+                builder.setVersion(version);
+
+                FileInfo response = builder.build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+                return;
             }
             logger.info("Reading file: " + request.getFilename());
 
@@ -209,24 +220,26 @@ public final class MetadataStore {
             int vote = 1;
             if (logEntries.size()==0) return true;
             for (int i=0; i<metadataStubs.size(); i++) {
-                Empty crash = Empty.newBuilder().build();
-                if (!metadataStubs.get(i).isCrashed(crash).getAnswer()) {
-                    int goal = logEntries.size()-1;
-                    AppendResult result = metadataStubs.get(i).appendEntries(logEntries.get(goal));
-                    if (result.getResult() == AppendResult.Result.OK) {
-                        vote++;
-                    } else if (result.getResult() == AppendResult.Result.MISSING_LOGS) {
-                        //TODO: resend missing logs to sync
-                        ArrayList<Integer> missingLogs = new ArrayList<>(result.getMissingLogsList());
-                        for (Integer idx: missingLogs) {
-                            metadataStubs.get(i).appendEntries(logEntries.get(idx));
-                            metadataStubs.get(i).commit(logEntries.get(idx));
-                            AppendResult check = metadataStubs.get(i).appendEntries(logEntries.get(goal));
-                            // TODO: WHAT TO DO IF HAS BEEN SYNC
-                            if (check.getResult() == AppendResult.Result.OK) {
-                                vote++;
-                                break;
+                int goal = logEntries.size()-1;
+                AppendResult result = metadataStubs.get(i).appendEntries(logEntries.get(goal));
+                if (result.getResult() == AppendResult.Result.OK) {
+                    metadataStubs.get(i).commit(logEntries.get(goal));
+                    vote++;
+                } else if (result.getResult() == AppendResult.Result.MISSING_LOGS) {
+                    //TODO: resend missing logs to sync
+                    ArrayList<Integer> missingLogs = new ArrayList<>(result.getMissingLogsList());
+                    for (Integer idx: missingLogs) {
+                        metadataStubs.get(i).appendEntries(logEntries.get(idx));
+                        metadataStubs.get(i).commit(logEntries.get(idx));
+                        AppendResult check = metadataStubs.get(i).appendEntries(logEntries.get(goal));
+
+                        // TODO: WHAT TO DO IF HAS BEEN SYNC
+                        if (check.getResult() == AppendResult.Result.OK) {
+                            vote++;
+                            if(logEntries.get(goal).getIsCommited()) {
+                                metadataStubs.get(i).commit(logEntries.get(goal));
                             }
+                            break;
                         }
                     }
                 }
@@ -240,10 +253,7 @@ public final class MetadataStore {
             logEntries.set(logEntries.size()-1, latestLog);
             // TODO: CHECK WHETHER THEY ARE THE SAME
             for(int i=0; i<metadataStubs.size(); i++) {
-                Empty crash = Empty.newBuilder().build();
-                if (!metadataStubs.get(i).isCrashed(crash).getAnswer()) {
-                    metadataStubs.get(i).commit(latestLog);
-                }
+                metadataStubs.get(i).commit(latestLog);
             }
         }
 
@@ -283,12 +293,12 @@ public final class MetadataStore {
                     builder.setResult(WriteResult.Result.MISSING_BLOCKS);
                     builder.setCurrentVersion(version);
                 } else {
-                    // successfully modify files
+                    // successfully modify files, two phase commit
                     if(blockHashMap.containsKey(filename) && equalHashList(blockHashMap.get(filename), hashlist)) {
                         builder.setResult(WriteResult.Result.OK);
                     } else {
                         writeLog(version, filename, hashlist);
-                        if (syncLogs()) {  // Actually it will always be true
+                        if (syncLogs()) {
                             builder.setResult(WriteResult.Result.OK);
                             builder.setCurrentVersion(version);
                             versionMap.put(filename, version);
@@ -377,7 +387,7 @@ public final class MetadataStore {
             if (versionMap.containsKey(filename) && version == versionMap.get(filename)+1) {
                 ArrayList<String> deleteList = new ArrayList<>();
                 deleteList.add("0");
-                // successfully modify files
+                // successfully modify files, two phase commit
                 writeLog(version, filename, deleteList);
 
                 if (syncLogs()) {
@@ -392,7 +402,6 @@ public final class MetadataStore {
                 responseObserver.onNext(response);
                 responseObserver.onCompleted();
             }
-            //TODO: what if versionMap does not contain file while version!=1?
             else if (versionMap.containsKey(filename) && version != versionMap.get(filename)+1){
                 builder.setResult(WriteResult.Result.OLD_VERSION);
                 builder.setCurrentVersion(versionMap.get(filename));
@@ -457,16 +466,21 @@ public final class MetadataStore {
         @Override
         public void appendEntries(surfstore.SurfStoreBasic.Log request,
                                   io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.AppendResult> responseObserver) {
-            if(isCrashed) {
-                throw new RuntimeException("Follower is crashed, cannot append!");
-            }
             AppendResult.Builder builder = AppendResult.newBuilder();
+            if(isCrashed) {
+//                throw new RuntimeException("Follower is crashed, cannot append!");
+                builder.setResult(AppendResult.Result.IS_CRASHED);
+                AppendResult response = builder.build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+                return;
+            }
             if(request.getIndex() > logEntries.size()) {
                 builder.setResult(AppendResult.Result.MISSING_LOGS);
                 int start = logEntries.size();
                 int end = request.getIndex();
                 ArrayList<Integer> missingIdx = new ArrayList<>();
-                for (int i=start; i<end; i++) { //TODO:check index again
+                for (int i=start; i<end; i++) { //check index again
                     missingIdx.add(i);
                 }
                 builder.addAllMissingLogs(missingIdx);
@@ -486,8 +500,14 @@ public final class MetadataStore {
         @Override
         public void commit(surfstore.SurfStoreBasic.Log request,
                            io.grpc.stub.StreamObserver<surfstore.SurfStoreBasic.Empty> responseObserver) {
-            if(isCrashed || isLeader) {
+            if(isLeader) {
                 throw new RuntimeException("Not a follower or follower is crashed, cannot commit!");
+            }
+            if(isCrashed) {
+                Empty response = Empty.newBuilder().build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+                return;
             }
             int size = logEntries.size();
             int curIdx = logEntries.get(size-1).getIndex();
@@ -516,39 +536,39 @@ public final class MetadataStore {
             ArrayList<Integer> versionList = new ArrayList<>();
             builder.setFilename(filename);
 
-            if(clusterNum == 1) {
+//            if(clusterNum == 1) {
                 if (!versionMap.containsKey(filename)) {
                     versionMap.put(filename, 0);
                 }
                 int version = versionMap.get(filename);
                 builder.setVersion(version);
-            } else {
-                if (isLeader) {
-                    if (versionMap.containsKey(filename)) {
-                        int version = versionMap.get(filename);
-                        versionList.add(version);
-                        builder.setVersion(version);
-                    } else {
-                        versionMap.put(filename, 0);
-                        versionList.add(0);
-                        builder.setVersion(0);
-                    }
-                    for (int i = 0; i < metadataStubs.size(); i++) {
-                        FileInfo info = FileInfo.newBuilder().setFilename(filename).build();
-                        int version = metadataStubs.get(i).getVersion(info).getVersion();
-                        versionList.add(version);
-                    }
-                    builder.addAllVersionlist(versionList);
-                } else {
-                    if (versionMap.containsKey(filename)) {
-                        int version = versionMap.get(filename);
-                        builder.setVersion(version);
-                    } else {
-                        versionMap.put(filename, 0);
-                        builder.setVersion(0);
-                    }
-                }
-            }
+//            } else {
+//                if (isLeader) {
+//                    if (versionMap.containsKey(filename)) {
+//                        int version = versionMap.get(filename);
+//                        versionList.add(version);
+//                        builder.setVersion(version);
+//                    } else {
+//                        versionMap.put(filename, 0);
+//                        versionList.add(0);
+//                        builder.setVersion(0);
+//                    }
+//                    for (int i = 0; i < metadataStubs.size(); i++) {
+//                        FileInfo info = FileInfo.newBuilder().setFilename(filename).build();
+//                        int version = metadataStubs.get(i).getVersion(info).getVersion();
+//                        versionList.add(version);
+//                    }
+//                    builder.addAllVersionlist(versionList);
+//                } else {
+//                    if (versionMap.containsKey(filename)) {
+//                        int version = versionMap.get(filename);
+//                        builder.setVersion(version);
+//                    } else {
+//                        versionMap.put(filename, 0);
+//                        builder.setVersion(0);
+//                    }
+//                }
+//            }
 
             FileInfo response = builder.build();
             responseObserver.onNext(response);
