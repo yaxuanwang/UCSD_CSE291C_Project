@@ -223,7 +223,10 @@ public final class MetadataStore {
                 int goal = logEntries.size()-1;
                 AppendResult result = metadataStubs.get(i).appendEntries(logEntries.get(goal));
                 if (result.getResult() == AppendResult.Result.OK) {
+<<<<<<< HEAD
                     metadataStubs.get(i).commit(logEntries.get(goal));
+=======
+>>>>>>> 9e400e554965c421fa2eef4f96312a7b0008a084
                     vote++;
                 } else if (result.getResult() == AppendResult.Result.MISSING_LOGS) {
                     //TODO: resend missing logs to sync

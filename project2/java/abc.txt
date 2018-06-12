@@ -11,7 +11,10 @@ new
 new new new
 newnew
 new
+<<<<<<< HEAD
 new
 new
 new
 new
+=======
+>>>>>>> 9e400e554965c421fa2eef4f96312a7b0008a084
